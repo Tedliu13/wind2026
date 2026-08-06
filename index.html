@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <title>TReAD夏季冬季日夜風場</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.14.0/mapbox-gl.css" rel="stylesheet" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.14.0/mapbox-gl.js"></script>
+  <style>
+    html,body,#map{height:100%;margin:0}
+    /* 設定面板（預設隱藏） */
+    .panel{position:absolute;top:58px;left:12px;z-index:10;background:rgba(255,255,255,.96);
+      padding:12px 14px;border-radius:14px;box-shadow:0 10px 28px rgba(0,0,0,.18);
+      font:14px/1.5 system-ui,"Noto Sans TC"; display:none; max-width:400px}
+    .row{display:grid;grid-template-columns:110px 1fr 56px;gap:10px;align-items:center;margin:6px 0}
+    .row label{white-space:nowrap}
+    .row select{grid-column:2/span 2}
+    .title{font-weight:700;margin-bottom:4px}
+    .inline{display:flex;gap:10px;margin-bottom:6px}
+    .status{position:absolute;bottom:25px;left:12px;background:rgba(0,0,0,.7);color:#fff;
+      padding:6px 10px;border-radius:8px;font-size:12px}
+
+    /* 左上：設定按鈕 */
+    .settings-btn{position:absolute;top:12px;left:12px;z-index:11;border:none;border-radius:12px;
+      padding:8px 12px;background:#1f2937;color:#fff;cursor:pointer;box-shadow:0 6px 16px rgba(0,0,0,.2)}
+    .settings-btn:hover{background:#111827}
+
+    /* 右下：飛行視角 */
+    .flybar{position:absolute;right:12px;bottom:25px;z-index:10;display:flex;gap:8px}
+    .flybar button{border:none;border-radius:12px;padding:10px 12px;background:#2563eb;color:#fff;cursor:pointer;
+      box-shadow:0 6px 16px rgba(0,0,0,.2)}
+    .flybar button:hover{background:#1e40af}
+    /* 右側地形 legend（預設隱藏） */
+    /* 右側地形 legend（預設隱藏）— 最多不超過視窗高度的 1/3 */
+/* 右側地形 legend（預設隱藏）— 最多不超過視窗高度 1/3 */
+  .legend{
+    position:absolute; right:12px; top:12px; z-index:12;
+    background:rgba(255,255,255,.96); padding:6px; border-radius:10px;
+    box-shadow:0 8px 20px rgba(0,0,0,.15);
+    box-sizing:border-box;
+    max-height:33svh;    /* Safari/行動裝置更準的視窗高度單位 */
+    overflow:auto;       /* 即使內容過大也不會「突出」，容器內滾動 */
+  }
+
+  /* 右側地形 legend（預設隱藏）— 容器高度以視窗為基準 */
+  #terrainLegend.legend,
+  #aermodTerrainLegend.legend{
+    position:absolute; right:12px; top:12px; z-index:12;
+    background:rgba(255,255,255,.96); padding:6px; border-radius:10px;
+    box-shadow:0 8px 20px rgba(0,0,0,.15);
+    box-sizing:border-box;
+    height: clamp(120px, 33svh, 360px);  /* ← 明確高度；不超過視窗高 1/3，且有上下限 */
+    overflow:hidden;                     /* 超出就裁掉（或改 overflow:auto 顯示卷軸） */
+  }
+
+  /* 讓圖片吃容器高度，等比縮放；強制覆蓋任何 inline 寫死尺寸 */
+  #terrainLegend img,
+  #aermodTerrainLegend img{
+    display:block;
+    height:100% !important;   /* ← 關鍵：跟著容器高度走 */
+    width:auto !important;    /* 等比縮放，不拉寬 */
+    max-width:min(40vw, 88svw);
+    object-fit:contain;
+  }
+
+  /* 平板/手機再縮小一點容器高度與外距 */
+  @media (max-width: 768px){
+    #terrainLegend.legend,
+    #aermodTerrainLegend.legend{ right:8px; top:8px; height: clamp(100px, 28svh, 300px); }
+    #terrainLegend img,
+    #aermodTerrainLegend img{ max-width: min(60vw, 90svw); }
+  }
+  @media (max-width: 420px){
+    #terrainLegend.legend,
+    #aermodTerrainLegend.legend{ height: clamp(90px, 24svh, 240px); }
+    #terrainLegend img,
+    #aermodTerrainLegend img{ max-width: min(70vw, 92svw); }
+  }
+
+
+
+    /* 右側風場色階 legend */
+    .wind-legend{
+      position:absolute; right:12px; bottom:88px; z-index:12;
+      background:rgba(255,255,255,.96); padding:10px 10px 8px; border-radius:10px;
+      box-shadow:0 8px 20px rgba(0,0,0,.15); width:270px
+    }
+    .wind-legend .hdr{display:flex;justify-content:space-between;align-items:center;font-weight:500;font-size: 12px;margin-bottom:6px}
+    .wind-legend canvas{display:block;width:250px;height:16px;border-radius:3px}
+    .wind-legend .ticks{display:flex;justify-content:space-between;margin-top:4px;font-size:12px;opacity:.85}
+    /* 特定區選單 */
+    .flybar select{
+      appearance:none; border:none; border-radius:12px; padding:10px 12px;
+      background:#f3f4f6; color:#111; box-shadow:0 6px 16px rgba(0,0,0,.1);
+    }
+    .flybar select:focus{ outline:2px solid #2563eb; }
+    .mini-btn{
+      border:none; border-radius:10px; padding:8px 10px; background:#e5e7eb; color:#111; cursor:pointer;
+      box-shadow:0 4px 10px rgba(0,0,0,.08)
+    }
+    .mini-btn:hover{ background:#d1d5db; }
+
+
+  </style>
+</head>
+<body>
+<div id="map"></div>
+
+<!-- 左上：設定按鈕 -->
+<button id="toggleSettings" class="settings-btn" aria-expanded="false">⚙️ 設定</button>
+
+<!-- 設定面板（點上面的按鈕才展開） -->
+<div id="panel" class="panel" aria-hidden="true">
+  <div class="title">風場切換</div>
+  <div class="inline">
+    <label><input type="radio" name="season" value="DJF"> 冬季 (DJF)</label>
+    <label><input type="radio" name="season" value="JJA" checked> 夏季 (JJA)</label>
+    <label><input type="radio" name="tod" value="day" checked> 白天</label>
+    <label><input type="radio" name="tod" value="night"> 夜晚</label>
+  </div>
+
+  <div class="title" style="margin-top:6px">粒子參數</div>
+  <div class="row">
+    <label>粒子數</label>
+    <input id="pCount" type="range" min="500" max="5000" step="500" value="2000">
+    <output id="pCountV">2000</output>
+  </div>
+  <div class="row">
+    <label>速度係數</label>
+    <input id="pSpeed" type="range" min="0" max="1" step="0.01" value="0.6">
+    <output id="pSpeedV">0.6</output>
+  </div>
+  <div class="row">
+    <label>尾跡係數</label>
+    <input id="pFade" type="range" min="0.80" max="0.995" step="0.005" value="0.90">
+    <output id="pFadeV">0.90</output>
+  </div>
+  <div class="row">
+    <label>最大速度</label>
+    <input id="pMax" type="range" min="1" max="20" step="1" value="5">
+    <output id="pMaxV">5</output>
+  </div>
+  <div class="row">
+    <label>重置係數</label>
+    <input id="pReset" type="range" min="0" max="1" step="0.05" value="0.40">
+    <output id="pResetV">0.40</output>
+  </div>
+  <div class="row">
+    <label>離地高度(m)</label>
+    <input id="pElev" type="range" min="0" max="3000" step="50" value="0">
+    <output id="pElevV">0</output>
+  </div>
+  <div class="row">
+    <label>色帶</label>
+    <select id="pPalette">
+      <option value="teal" selected>多色階</option>
+      <option value="white">白色系</option>
+      <option value="blue">藍色系</option>
+      <option value="fire">橘色系</option>
+    </select>
+  </div>
+  <div class="title" style="margin-top:6px">模式地形</div>
+    <div class="inline">
+      <label><input id="chkTerrain" type="checkbox"> 顯示模式地形</label>
+    </div>
+    <div class="row">
+      <label>透明度</label>
+      <input id="terrainOpacity" type="range" min="0" max="1" step="0.01" value="0.80">
+      <output id="terrainOpacityV">0.80</output>
+    </div>
+    <div class="inline">
+      <label><input id="chkAermodTerrain" type="checkbox"> 顯示AERMOD地形</label>
+    </div>
+    <div class="row">
+      <label>透明度</label>
+      <input id="aermodTerrainOpacity" type="range" min="0" max="1" step="0.01" value="0.80">
+      <output id="aermodTerrainOpacityV">0.80</output>
+    </div>
+  <div class="inline">
+    <label><input id="chkCounty" type="checkbox"> 顯示縣市邊界</label>
+  </div>
+  <div class="inline">
+  <label><input id="chkCityLabel" type="checkbox"> 顯示縣市名稱</label>
+  </div>
+  <div class="inline">
+    <label><input id="chkArrows" type="checkbox"> 顯示風向箭頭(放大到某程度才會出現)</label>
+  </div>
+  <div class="title" style="margin-top:6px">圖釘</div>
+  <div class="inline">
+    <label><input id="chkPinMode" type="checkbox"> 新增圖釘模式</label>
+  </div>
+  <div class="inline">
+    <button id="btnClearPins" type="button" class="mini-btn">清除全部圖釘</button>
+    <button id="btnExportPins" type="button" class="mini-btn">匯出 pins.json</button>
+  </div>
+
+
+
+</div>
+
+<!-- 右下：飛行視角 -->
+<div class="flybar">
+  <button id="flyA">飛行視角 A</button>
+  <button id="flyB">飛行視角 B</button>
+  <select id="presetSelect" title="縣市視角">
+    <option value="">縣市視角</option>
+    <option value="taipei">台北市</option>
+    <option value="newtaipei">新北市</option>
+    <option value="keelung">基隆市</option>
+    <option value="taoyuan">桃園市</option>
+    <option value="shintzu">新竹市</option>
+    <option value="meowli">苗栗市</option>
+    <option value="taichung">台中市</option>
+    <option value="nantou">南投市</option>
+    <option value="changhua">彰化市</option>
+    <option value="yunlin">雲林斗六</option>
+    <option value="chiayi">嘉義市</option>
+    <option value="tainan">台南市</option>
+    <option value="kaohsiung">高雄市</option>
+    <option value="pingtung">屏東市</option>
+    <option value="taitung">台東市</option>
+    <option value="hualien">花蓮市</option>
+    <option value="yilan">宜蘭市</option>
+  </select>
+</div>
+
+<div id="terrainLegend" class="legend" style="display:none;">
+  <img src="terrain_legend.png" alt="Terrain legend">
+</div>
+<div id="aermodTerrainLegend" class="legend" style="display:none;">
+  <img src="AERMOD_terrain_legend.png" alt="AERMOD terrain legend">
+</div>
+<!-- 右側：風場色階 legend -->
+<div id="windLegend" class="wind-legend">
+  <div class="hdr">
+    <span>風速 (m/s)</span>
+    <span id="legendPaletteName" style="font-weight:500;opacity:.8">白色系</span>
+  </div>
+  <canvas id="windScale" width="250" height="16"></canvas>
+  <div id="windTicks" class="ticks"></div>
+</div>
+
+<div id="status" class="status">初始化中…</div>
+
+<script>
+  // 1) 公開 token
+  mapboxgl.accessToken = 'pk.eyJ1IjoidGVkbGl1IiwiYSI6ImNtMHAxMjdveDAwZWUya29sanY1c3Btc2EifQ.dGpYV4RZ4-OcpITjSKfcfg';
+
+  // 2) 你的 3D 地形樣式
+  const STYLE_URL = 'mapbox://styles/tedliu/cm0qicaza00mf01pwfsfj3qgx';
+
+  // 3) 四個 tileset
+  const TILESETS = {
+    DJF_day:   'mapbox://tedliu.tw_wind_djf_day',
+    DJF_night: 'mapbox://tedliu.tw_wind_djf_night',
+    JJA_day:   'mapbox://tedliu.tw_wind_jja_day',
+    JJA_night: 'mapbox://tedliu.tw_wind_jja_night'
+  };
+  const SOURCE_LAYER = 'twinds';
+  const BAND_NAME    = 'wind';
+  const PIN_SOURCE_ID = 'user-pins';
+  const PIN_POINT_LAYER_ID = 'user-pins-point';
+  const PIN_LABEL_LAYER_ID = 'user-pins-label';
+  const PIN_FILE_URL = 'pins.json';
+  const PIN_DATA = {
+    type: 'FeatureCollection',
+    features: []
+  };
+
+
+
+  // === 自訂 TEAL 色帶（用最大風速的比例 0~1 標註停點） ===
+  const TEAL_CUSTOM_FRAC_STOPS = [
+    [0.00, '#ffffff'], // 
+    [0.10, '#98ffff'], // 
+    [0.20, '#00ceff'], // 
+    [0.30, '#006af7'], // 
+    [0.40, '#fefe08'], // 
+    [0.50, '#ffcb00'], // 
+    [0.60, '#ff9c00'], // 
+    [0.70, '#fe0005'], // 
+    [0.80, '#c90200'], // 
+    [0.90, '#9d0000'], // 
+    [1.00, '#9a009d']  // 
+  ];
+
+  // 依目前最大風速 pMax 轉成絕對值（m/s）
+  function tealStopsAbs(max){ return TEAL_CUSTOM_FRAC_STOPS.map(([p,c])=>[p*max, c]); }
+
+
+  // 起始視角
+  const map = new mapboxgl.Map({
+    container:'map', style:STYLE_URL,
+    center:[121,23.6], zoom:8.5, pitch:60, bearing:-10, antialias:true
+  });
+  map.setMinZoom(8);
+  map.setMaxZoom(13);
+  const $ = id => document.getElementById(id);
+  const say = t => { $('status').textContent = t; console.log(t); };
+
+  // 啟用地形
+  function enableTerrainIfAny(){
+    const st = map.getStyle();
+    if (st.terrain && !map.getSource(st.terrain.source)) map.setTerrain(null);
+    const dem = Object.entries(st.sources).find(([,s])=>s.type==='raster-dem');
+    if (dem) {
+      map.setTerrain({ source: dem[0], exaggeration: 4 }); 
+      if (!map.getLayer('sky')) map.addLayer({ id:'sky', type:'sky', paint:{ 'sky-type':'atmosphere' }});
+    }
+  }
+
+  // 色帶
+  function paletteExpr(kind){
+    const speed = ['raster-particle-speed'];
+    switch(kind){
+      case 'blue':
+        return ['interpolate',['linear'],speed,
+          0,'rgba(0,0,30,0.2)', 3,'rgba(0,70,160,0.6)', 7,'rgba(0,200,255,0.9)', 12,'rgba(255,255,255,1)'];
+      case 'teal': {
+        const speed = ['raster-particle-speed'];
+        const max = +document.getElementById('pMax').value;
+        const stops = tealStopsAbs(max);              // 轉成 m/s
+        const expr = ['interpolate', ['linear'], speed];
+        stops.forEach(([v, c]) => expr.push(v, c));   // v=速度(m/s), c=顏色
+        return expr;
+      }
+
+      case 'fire':
+        return ['interpolate',['linear'],speed,
+          0,'rgba(0,0,0,0.25)', 3,'rgba(120,60,0,0.7)', 7,'rgba(220,120,0,0.9)', 12,'rgba(255,255,220,1)'];
+      default:
+        return ['interpolate',['linear'],speed,
+          0,'rgba(255,255,255,0.25)', 5,'rgba(255,255,255,0.7)', 12,'rgba(255,255,255,1)'];
+    }
+  }
+
+  // 加載四個風場圖層
+  function addAllWindLayers(){
+    Object.entries(TILESETS).forEach(([key,url])=>{
+      if (!url) return;
+      const srcId = 'src_'+key, lyrId = 'wind_'+key;
+      if (!map.getSource(srcId)) map.addSource(srcId, { type:'raster-array', url, tileSize:1024 });
+      if (!map.getLayer(lyrId)) {
+        map.addLayer({
+          id:lyrId, type:'raster-particle', source:srcId, 'source-layer':SOURCE_LAYER,
+          layout:{ visibility: key==='JJA_day' ? 'visible' : 'none' },
+          paint:{
+            'raster-particle-array-band': BAND_NAME,
+            'raster-particle-count': +$('pCount').value,
+            'raster-particle-speed-factor': parseFloat($('pSpeed').value),
+            'raster-particle-fade-opacity-factor': parseFloat($('pFade').value),
+            'raster-particle-max-speed': +$('pMax').value,
+            'raster-particle-reset-rate-factor': parseFloat($('pReset').value),
+            'raster-particle-elevation': +$('pElev').value,
+            'raster-particle-color': paletteExpr($('pPalette').value)
+          }
+        });
+      }
+    });
+    say('顯示：JJA_day');
+  }
+
+  // 切換可見層
+  function currentKey(){
+    const s=document.querySelector('input[name="season"]:checked').value;
+    const t=document.querySelector('input[name="tod"]:checked').value;
+    return `${s}_${t}`;
+  }
+
+  // 全域風向箭頭開關（維持 minzoom:10，不改變你原本的設定）
+  function setAllDirVisibility(vis){
+    Object.keys(WINDDIR_FILES).forEach(k=>{
+      const id = 'dir_' + k;
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+    });
+  }
+  function setDirVisibilityForKey(key, vis){
+    const id = 'dir_' + key;
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+  }
+  function updateArrowsVisibility(){
+    const chk = document.getElementById('chkArrows');
+    const enable = !!(chk && chk.checked);
+    // 先全部關掉
+    setAllDirVisibility('none');
+    // 開啟目前情境（僅當有勾選）→ 因為圖層本身 minzoom:10，縮放<10時仍不會出現
+    if (enable) setDirVisibilityForKey(currentKey(), 'visible');
+  }
+  function showOnly(key){
+    // 粒子層
+    Object.keys(TILESETS).forEach(k=>{
+      if (!TILESETS[k]) return;
+      const lyrId='wind_'+k;
+      if (map.getLayer(lyrId)) map.setLayoutProperty(lyrId,'visibility', k===key?'visible':'none');
+    });
+    // 風向箭頭（關鍵）
+    Object.keys(WINDDIR_FILES).forEach(k=>{
+      const id = 'dir_' + k;               // 如果你的圖層命名是 'dir_'+k+'_fa' 就改這裡
+      if (map.getLayer(id)) {
+        map.setLayoutProperty(id, 'visibility', k === key ? 'visible' : 'none');
+      }
+    });
+  }
+
+  function setPaint(prop,val){
+    Object.keys(TILESETS).forEach(k=>{
+      if (!TILESETS[k]) return;
+      const lyrId = 'wind_'+k;
+      if (map.getLayer(lyrId)) map.setPaintProperty(lyrId, prop, val);
+    });
+  }
+
+  // 1) 初次載入後畫一次
+  map.on('style.load', async ()=>{
+    enableTerrainIfAny();
+    addAllWindLayers();
+    await addTerrainOverlay();
+    await addAermodTerrainOverlay();
+    await addCountyBoundaries(); // ← 新增：載入縣市邊界（預設隱藏）
+    await addCityLabels();    // 生成以 CITY_PRESETS 座標為準的縣市名稱標籤
+    addPinLayers();
+    await loadPins();
+    bindCityLabelToggle();    // 綁定設定面板的顯示開關
+    bindTerrainUI();
+    bindAermodTerrainUI();
+    bindPinUI();
+    bindCountyToggle();          // ← 新增：綁定面板開關
+    drawWindLegend();
+    ensureArrowImage();      // 每次 style 載入都安全重建影像
+    await addWindDirLayers();  // ← 新增：載入風向箭頭層
+    // 再呼叫一次 showOnly(currentKey())，確保初始只顯示當前情境
+    showOnly(currentKey());
+  
+    // 綁定風向箭頭面板開關 + 初始化狀態
+    const chkAr = document.getElementById('chkArrows');
+    if (chkAr) {
+      chkAr.addEventListener('change', updateArrowsVisibility);
+      updateArrowsVisibility(); // 依勾選狀態（預設未勾選）決定是否顯示箭頭
+    }
+
+});
+
+
+  
+  // 2) 色帶選單變更時
+  document.getElementById('pPalette').addEventListener('change', ()=>{
+    setPaint('raster-particle-color', paletteExpr(document.getElementById('pPalette').value));
+    drawWindLegend();              // ← 新增
+  });
+
+  // 3) 最大速度滑桿變更時（保持你現有的 setPaint，同時重畫 legend）
+  document.getElementById('pMax').addEventListener('input', ()=>{
+    // 先更新地圖色帶（因為停點跟 pMax 有關）
+    setPaint('raster-particle-color', paletteExpr(document.getElementById('pPalette').value));
+    // 再重畫 legend
+    drawWindLegend();
+  });
+
+  // 產生一個帶黑邊白心的箭頭，使用 ImageData 明確指定尺寸
+  function ensureArrowImage() {
+    const NAME = 'wind-arrow';
+
+    // --- 固定整數尺寸，避免非整數 DPR 造成誤差 ---
+    const base = 64;                 // 以 64px 為基底畫布
+    const dpr  = 2;                  // 用固定 2x（夠銳利又穩定）
+    const W = base * dpr, H = base * dpr;
+
+    const cv  = document.createElement('canvas');
+    cv.width  = W;                   // 這裡是實際像素尺寸（非 CSS）
+    cv.height = H;
+    const ctx = cv.getContext('2d');
+    ctx.scale(dpr, dpr);             // 把作畫座標縮回 0..64
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // 畫箭頭（→）: 桿 + 箭頭
+    const shaft = () => { ctx.moveTo(10, 32); ctx.lineTo(46, 32); };
+    const head  = () => { ctx.moveTo(46, 20); ctx.lineTo(58, 32); ctx.lineTo(46, 44); };
+
+    // 外框(黑)
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 6;
+    ctx.beginPath(); shaft(); ctx.stroke();
+    ctx.beginPath(); head();  ctx.stroke();
+
+    // 內線(白)
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); shaft(); ctx.stroke();
+    ctx.beginPath(); head();  ctx.stroke();
+
+    // 轉成 ImageData（長度 = W*H*4）
+    const id = ctx.getImageData(0, 0, W, H);
+
+    // 加之前先移除同名影像，避免尺寸不一致
+    try { if (map.hasImage(NAME)) map.removeImage(NAME); } catch(_) {}
+
+    // 用 {width,height,data} 明確添加，並設 pixelRatio 與 dpr 一致
+    map.addImage(NAME, { width: W, height: H, data: id.data }, { pixelRatio: dpr });
+  }
+
+
+
+
+  // 把這 4 行改成你放在網站上的檔名/路徑
+  const WINDDIR_FILES = {
+    DJF_day:   'wind_DJF_day_native.json',
+    DJF_night: 'wind_DJF_night_native.json',
+    JJA_day:   'wind_JJA_day_native.json',
+    JJA_night: 'wind_JJA_night_native.json'
+  };
+// 你給我的 native JSON 會包含 U/V 兩筆紀錄（parameterNumber: 2=U, 3=V）
+  // DIR_IS_FROM=true 代表資料是「來向」，會自動 +180 變「去向」
+  const DIR_IS_FROM = true;
+  const ROT_OFFSET  = 90;     // 右轉 90°
+
+  // 讀 native 風場，抽稀每 N 格，輸出 GeoJSON(Point)
+  async function loadDirFromNative(url, gridStep = 3) {
+    const raw = await fetch(url).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
+      return r.json();
+    });
+
+    const arr = Array.isArray(raw) ? raw : (raw.data || raw);
+    const uRec = arr.find(r => r?.header?.parameterNumber === 2); // U 分量
+    const vRec = arr.find(r => r?.header?.parameterNumber === 3); // V 分量
+    if (!uRec || !vRec) throw new Error('找不到 U/V 分量記錄');
+
+    const { nx, ny, lo1, la1, dx, dy } = uRec.header; // 假設 U/V header 一致
+    const U = uRec.data, V = vRec.data;
+    if (!U || !V || U.length !== nx * ny || V.length !== nx * ny) {
+      throw new Error(`U/V 長度與 nx*ny 不符 (nx=${nx}, ny=${ny}, U=${U?.length}, V=${V?.length})`);
+    }
+
+    const lonC = i => lo1 + (i + 0.5) * dx; // 取格心
+    const latC = j => la1 - (j + 0.5) * dy; // 緯度向南遞減（重點）
+
+    const feats = [];
+    for (let j = 0; j < ny; j += gridStep) {
+      for (let i = 0; i < nx; i += gridStep) {
+        const idx = j * nx + i;
+        const u = U[idx], v = V[idx];
+        if (u == null || v == null || isNaN(u) || isNaN(v)) continue;
+
+        // 以正北為 0°、順時針（Mapbox 的 text/icon-rotate 預設）
+        let ang = Math.atan2(u, v) * 180 / Math.PI;   // u(東)、v(北)
+        if (DIR_IS_FROM) ang = (ang + 180) % 360;     // 來向→去向
+        ang = (ang + ROT_OFFSET + 360) % 360;        // ★ 右轉 90°
+        const mag = Math.hypot(u, v);
+
+        feats.push({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [ lonC(i), latC(j) ] },
+          properties: { angle: ang, mag, u, v, i, j }
+        });
+      }
+    }
+    return { type: 'FeatureCollection', features: feats };
+  }
+
+
+
+  async function addWindDirLayers(gridStep = 3) {
+    ensureArrowImage(); // 你用 Canvas 注册的箭頭影像
+
+    const added = [];
+    for (const [key, url] of Object.entries(WINDDIR_FILES)) {
+      const srcId = 'dir_src_' + key, lyrId = 'dir_' + key;
+
+      // ★ 用「native→GeoJSON」的轉換
+      let data;
+      try {
+        data = await loadDirFromNative(url, gridStep);
+      } catch (e) {
+        console.error('[winddir] 讀取/轉換失敗 →', key, url, e);
+        continue;
+      }
+
+      if (!map.getSource(srcId)) map.addSource(srcId, { type:'geojson', data });
+      if (!map.getLayer(lyrId)) {
+        map.addLayer({
+          id: lyrId,
+          type: 'symbol',
+          source: srcId,
+          minzoom: 10,
+          layout: {
+            'icon-image': 'wind-arrow',
+            'icon-rotate': ['get', 'angle'],
+            'icon-rotation-alignment': 'map',
+            'icon-allow-overlap': true,
+            'icon-size': [
+              'interpolate', ['linear'], ['zoom'],
+              11, 0.70,
+              13, 1.20,
+              15, 1.50
+            ],
+            'visibility': 'none'
+          },
+          paint: {
+            'icon-opacity': ['interpolate', ['linear'], ['get','mag'], 0, 0.3, 0.5, 1]
+          }
+        });
+        added.push(lyrId);
+      }
+    }
+    console.log('[winddir] layers added:', added);
+  }
+
+
+
+
+
+  // === UI 綁定 ===
+  const bind = (id, prop, toFixed=2) => {
+    const el=$(id), out=$(id+'V');
+    const update=()=>{ out.textContent=(prop==='raster-particle-count'||prop==='raster-particle-max-speed'||prop==='raster-particle-elevation')? +el.value : (+el.value).toFixed(toFixed); setPaint(prop, +el.value); };
+    el.addEventListener('input', update); update();
+  };
+  bind('pCount','raster-particle-count',0);
+  bind('pSpeed','raster-particle-speed-factor',2);
+  bind('pFade','raster-particle-fade-opacity-factor',3);
+  bind('pMax','raster-particle-max-speed',0);
+  bind('pReset','raster-particle-reset-rate-factor',2);
+  bind('pElev','raster-particle-elevation',0);
+  document.querySelectorAll('input[name="season"],input[name="tod"]').forEach(el=>{
+    el.addEventListener('change', ()=>showOnly(currentKey()));
+  });
+
+  // 左上設定按鈕：顯示/隱藏面板
+  const panel = $('panel'), toggleBtn = $('toggleSettings');
+  toggleBtn.addEventListener('click', ()=>{
+    const open = panel.style.display !== 'none';
+    panel.style.display = open ? 'none' : 'block';
+    toggleBtn.setAttribute('aria-expanded', String(!open));
+    panel.setAttribute('aria-hidden', String(open));
+    toggleBtn.textContent = open ? '⚙️ 設定' : '✖ 關閉設定';
+  });
+  // 預設隱藏
+  panel.style.display = 'none';
+
+  // === 平順飛行工具（地形無感） ===
+  // 柔和 easing（保留）
+  const easeInOutSine = t => 0.5 - 0.5 * Math.cos(Math.PI * t);
+  const FLY_DUR = 4000; // 城市或單段飛行的預設時間
+// 用法：runWithTerrain([ preset ], [ FLY_DUR ], { lockPitch:true });
+
+
+  // 降負擔（可讓飛行更穩；若希望飛行時粒子仍動，把 0.2 調大一點）
+  const WIND_LAYER_IDS = () =>
+    Object.keys(TILESETS).filter(k => TILESETS[k]).map(k => 'wind_' + k);
+
+  function visibleWindLayerId(){
+    const ids = Object.keys(TILESETS).filter(k => TILESETS[k]).map(k => 'wind_' + k);
+    return ids.find(id => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') === 'visible');
+  }
+  function throttleParticles(enableFull) {
+    const id = visibleWindLayerId();
+    if (!id) return;
+    const count = +$('pCount').value;
+    const speed = parseFloat($('pSpeed').value);
+    const fade  = parseFloat($('pFade').value);
+    map.setPaintProperty(id, 'raster-particle-count', enableFull ? count : Math.max(1500, Math.round(count * 0.25)));
+    map.setPaintProperty(id, 'raster-particle-speed-factor', enableFull ? speed : Math.max(0.2, speed * 0.3));
+    map.setPaintProperty(id, 'raster-particle-fade-opacity-factor', enableFull ? fade : 0.85);
+  }
+
+
+  // 不縮放弧線的單段動畫（保留）
+  function easeToAsync(opts, duration = 4500) {
+    return new Promise(resolve => {
+      if (map.isMoving()) map.stop();
+      map.once('moveend', resolve);
+      map.easeTo({ duration, easing: easeInOutSine, essential: true, ...opts });
+    });
+  }
+
+  // 多段串接（保留）
+  async function smoothRun(steps, durations=[]) {
+    for (let i=0; i<steps.length; i++) {
+      await easeToAsync(steps[i], durations[i] ?? 4500);
+      await new Promise(r => setTimeout(r, 120));
+    }
+  }
+
+  // ✅ 保留地形的平順飛行：整段「鎖定 pitch」，最後再把 pitch 補到目標值
+  async function runWithTerrain(steps, durations=[], { lockPitch=true } = {}) {
+    throttleParticles(false);
+    const startPitch = map.getPitch();
+
+    // 先用「固定的 pitch」飛完全程，降低地形視差造成的「爬升/下降」錯覺
+    const patched = lockPitch
+      ? steps.map(s => ({ ...s, pitch: startPitch }))
+      : steps;
+
+    await smoothRun(patched, durations);
+
+    // 如果最後一步有指定 pitch，飛完後再短促補上目標 pitch（不影響地形）
+    const last = steps[steps.length - 1] || {};
+    if (lockPitch && typeof last.pitch === 'number' && Math.abs(last.pitch - startPitch) > 0.1) {
+      await easeToAsync({
+        center: last.center ?? map.getCenter(),
+        zoom:   last.zoom   ?? map.getZoom(),
+        bearing:last.bearing ?? map.getBearing(),
+        pitch:  last.pitch
+      }, 900);
+    }
+
+    throttleParticles(true);
+  }
+
+  function msFor(from, to, min=1800, max=4200){
+    const a = map.project(from), b = map.project(to);
+    const d = Math.hypot(a.x-b.x, a.y-b.y);           // 螢幕座標距離（像素）
+    const t = Math.min(1, d / 1200);                  // 0~1 規模化
+    return Math.round(min + (max-min) * t*t);         // 慢速起步感更自然
+  }
+
+
+  // ---- 飛行視角 ----
+  function flyToAsync(opts){
+    return new Promise(res=>{
+      const h=()=>{ map.off('moveend',h); res(); };
+      map.on('moveend', h);
+      map.flyTo({...opts, essential:true});
+    });
+  }
+  async function runPath(steps){ for (const s of steps) await flyToAsync(s); }
+
+  // A
+  $('flyA').addEventListener('click', ()=>{
+    runWithTerrain([
+      { zoom: 8.02, bearing: 39.82, pitch: 41.03, center: [120.961243, 23.095180] },
+      { zoom: 9.29, bearing: 63.82, pitch: 46.53, center: [120.786119, 23.545082] }
+    ], [5000, 6000], { lockPitch: true });
+  });
+
+  // B
+  $('flyB').addEventListener('click', ()=>{
+    runWithTerrain([
+      { zoom: 8.86, bearing: 12.75, pitch: 41.57, center: [120.881581, 23.470641] },
+      { zoom: 10.13, bearing: 12.75, pitch: 41.57, center: [121.016258, 23.872712] }
+    ], [5000, 6000], { lockPitch: true });
+  });
+
+  // 「特定區」選單
+  $('presetSelect').addEventListener('change', (e)=>{
+    const key = e.target.value;
+    if (!key) return;
+    const p = CITY_PRESETS[key];
+    runWithTerrain([ p ], [ FLY_DUR ], { lockPitch: true });
+  });
+
+
+  // 城市預設視角（中心、縮放、俯仰、方位）— 先給通用值，你可再微調
+  const CITY_PRESETS = {
+    taipei:    { center: [121.5654, 25.0330], zoom: 12,  pitch: 45, bearing: 20 }, // 台北市
+    newtaipei: { center: [121.4628, 25.0143], zoom: 11.4, pitch: 45, bearing: 20 }, // 新北市板橋
+    keelung:   { center: [121.7463, 25.1313], zoom: 12,  pitch: 45, bearing: 120 }, // 基隆市
+    taoyuan:   { center: [121.2969, 24.9937], zoom: 11.4,  pitch: 45, bearing: 20 }, // 桃園市
+    shintzu:   { center: [120.9647, 24.80395], zoom: 12,  pitch: 45, bearing: 20 }, // 新竹市
+    meowli:   { center: [120.8111, 24.5255], zoom: 11.4,  pitch: 45, bearing: 20 }, // 苗栗市
+    taichung:  { center: [120.6790, 24.1477], zoom: 11.4,  pitch: 45, bearing: 20 }, // 台中市
+    nantou:    { center: [120.6850, 23.9059], zoom: 11.4,  pitch: 45, bearing: 20 }, // 南投市
+    changhua:  { center: [120.5410, 24.0805], zoom: 11.4,  pitch: 45, bearing: 20 }, // 彰化市
+    yunlin:    { center: [120.5434, 23.7073], zoom: 11.4,  pitch: 45, bearing: 20 }, // 雲林斗六
+    chiayi:    { center: [120.4473, 23.4755], zoom: 12,  pitch: 45, bearing: 20 }, // 嘉義市
+    tainan:    { center: [120.2270, 22.9999], zoom: 11.4,  pitch: 45, bearing: 20 }, // 台南市
+    kaohsiung: { center: [120.3014, 22.6273], zoom: 11.4,  pitch: 45, bearing: 20 }, // 高雄市
+    pingtung:  { center: [120.4880, 22.6686], zoom: 11.4,  pitch: 45, bearing: 20 }, // 屏東市
+    taitung:   { center: [121.1457, 22.7560], zoom: 11.4,  pitch: 45, bearing: 20 }, // 台東市
+    hualien:   { center: [121.6068, 23.9770], zoom: 11.4,  pitch: 45, bearing: 20 }, // 花蓮市
+    yilan:     { center: [121.7530, 24.7590], zoom: 11.4,  pitch: 45, bearing: 20 }  // 宜蘭市
+  };
+
+  // 以「縣市視角」名稱與座標直接定義標籤（不讀任何 geojson）
+const LABEL_POINTS = [
+  { name:'台北市',   coord: CITY_PRESETS.taipei.center },
+  { name:'新北市',   coord: CITY_PRESETS.newtaipei.center },
+  { name:'基隆市',   coord: CITY_PRESETS.keelung.center },
+  { name:'桃園市',   coord: CITY_PRESETS.taoyuan.center },
+  { name:'新竹市',   coord: CITY_PRESETS.shintzu.center },
+  { name:'苗栗市',   coord: CITY_PRESETS.meowli.center },
+  { name:'台中市',   coord: CITY_PRESETS.taichung.center },
+  { name:'南投縣',   coord: CITY_PRESETS.nantou.center },
+  { name:'彰化縣',   coord: CITY_PRESETS.changhua.center },
+  { name:'雲林斗六', coord: CITY_PRESETS.yunlin.center },
+  { name:'嘉義市',   coord: CITY_PRESETS.chiayi.center },
+  { name:'台南市',   coord: CITY_PRESETS.tainan.center },
+  { name:'高雄市',   coord: CITY_PRESETS.kaohsiung.center },
+  { name:'屏東市',   coord: CITY_PRESETS.pingtung.center },
+  { name:'台東市',   coord: CITY_PRESETS.taitung.center },
+  { name:'花蓮市',   coord: CITY_PRESETS.hualien.center },
+  { name:'宜蘭市',   coord: CITY_PRESETS.yilan.center }
+];
+const LABEL_GEOJSON = {
+  type: 'FeatureCollection',
+  features: LABEL_POINTS.map(p => ({
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: p.coord },
+    properties: { COUNTYNAME: p.name }
+  }))
+};
+
+
+
+
+
+  // 錯誤提示
+  map.on('error', e=>{
+    if (e?.error?.status) say(`來源錯誤：${e.error.status} ${e.error.statusText||''}\n${e.error.url||''}`);
+  });
+
+  // 回傳 legend 用的 [速度(m/s), 顏色] 停點
+  function paletteStops(kind, max) {
+    switch (kind) {
+      case 'blue':
+        return [[0,'#001e3d'], [3,'#0046a0'], [7,'#00c8ff'], [max,'#ffffff']];
+      case 'fire':
+        return [[0,'#202020'], [3,'#783c00'], [7,'#dc7800'], [max,'#ffffdc']];
+      case 'teal':
+        return tealStopsAbs(max);
+
+      default: // white（用亮度做過渡）
+        return [[0,'#e8e8e8'], [Math.max(1, max*0.4),'#f5f5f5'], [max,'#ffffff']];
+    }
+  }
+
+  function drawWindLegend(){
+    const canvas = document.getElementById('windScale');
+    const ctx = canvas.getContext('2d');
+    const max = +document.getElementById('pMax').value;     // 最大風速（與地圖一致）
+    const kind = document.getElementById('pPalette').value; // 目前色帶
+    document.getElementById('legendPaletteName').textContent =
+      document.querySelector('#pPalette option:checked').textContent;
+
+
+    // 建立水平漸層
+    const grad = ctx.createLinearGradient(0,0,canvas.width,0);
+    const stops = paletteStops(kind, max);
+    stops.forEach(([v,c]) => grad.addColorStop(Math.max(0, Math.min(1, v/max)), c));
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    // 刻度（0%、25%、50%、75%、100%）→ 一位小數
+    const ticks = [0, .25, .5, .75, 1].map(p => (p * max).toFixed(1));
+    document.getElementById('windTicks').innerHTML =
+      ticks.map(v => `<span>${v}</span>`).join('');
+  }
+
+  // === 縣市邊界（GeoJSON 版本） ===
+  async function addCountyBoundaries() {
+    if (!map.getSource('tw-counties')) {
+      map.addSource('tw-counties', { type: 'geojson', data: 'taiwan_county.geojson' });
+    }
+    // 先放一條「外圈」當描邊（深色，避免白線在亮底圖上看不清）
+    if (!map.getLayer('county-casing')) {
+      map.addLayer({
+        id: 'county-casing',
+        type: 'line',
+        source: 'tw-counties',
+        layout: { visibility: 'none' },  // 預設不顯示
+        paint: {
+          'line-color': 'rgba(0,0,0,0.55)',
+          'line-width': ['interpolate',['linear'],['zoom'], 6, 0.8, 9, 1.6, 12, 2.8, 14, 3.6],
+          'line-opacity': 1
+        }
+      });
+    }
+    // 再疊白線主線
+    if (!map.getLayer('county-outline')) {
+      map.addLayer({
+        id: 'county-outline',
+        type: 'line',
+        source: 'tw-counties',
+        layout: { visibility: 'none' },  // 預設不顯示
+        paint: {
+          'line-color': '#ffffff',
+          'line-width': ['interpolate',['linear'],['zoom'], 6, 0.6, 9, 1.2, 12, 2.0, 14, 2.6],
+          'line-opacity': 1,
+          'line-join': 'round',
+          'line-cap': 'round'
+        }
+      });
+    }
+  }
+
+  // 綁定開關
+  function bindCountyToggle(){
+    const chk = document.getElementById('chkCounty');
+    const setVis = vis => {
+      if (map.getLayer('county-casing'))  map.setLayoutProperty('county-casing',  'visibility', vis);
+      if (map.getLayer('county-outline')) map.setLayoutProperty('county-outline', 'visibility', vis);
+    };
+    chk.addEventListener('change', ()=> setVis(chk.checked ? 'visible' : 'none'));
+  }
+
+  // === 顯示縣市名稱（座標直接沿用 CITY_PRESETS.center；文字大小固定 32） ===
+  function addCityLabels() {
+    // 依 CITY_PRESETS 組成點集合：座標=center；名稱=中文對照
+    const nameMap = {
+      taipei: "台北市",
+      newtaipei: "新北市",
+      keelung: "基隆市",
+      taoyuan: "桃園市",
+      shintzu: "新竹市",
+      meowli: "苗栗市",
+      taichung: "台中市",
+      nantou: "南投市",
+      changhua: "彰化市",
+      yunlin: "雲林斗六",
+      chiayi: "嘉義市",
+      tainan: "台南市",
+      kaohsiung: "高雄市",
+      pingtung: "屏東市",
+      taitung: "台東市",
+      hualien: "花蓮市",
+      yilan: "宜蘭市"
+    };
+
+    const features = Object.entries(CITY_PRESETS).map(([key, cfg]) => ({
+      type: "Feature",
+      geometry: { type: "Point", coordinates: cfg.center }, // ← 直接複製縣市視角座標
+      properties: { name: nameMap[key] ?? key }
+    }));
+
+    if (!map.getSource("city-labels")) {
+      map.addSource("city-labels", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features }
+      });
+    } else {
+      // 若重載 style，可更新資料
+      map.getSource("city-labels").setData({ type: "FeatureCollection", features });
+    }
+
+    if (!map.getLayer("city-labels")) {
+      map.addLayer({
+        id: "city-labels",
+        type: "symbol",
+        source: "city-labels",
+        layout: {
+          "text-field": ["get", "name"],
+          "text-size": ['interpolate', ['linear'], ['zoom'], 8, 22, 10, 28, 14, 44],                 
+          "text-font": ["Noto Sans Regular","Open Sans Regular","Arial Unicode MS Regular"],
+          "text-anchor": "center",
+          "text-offset": [0, 0],
+          "text-allow-overlap": true,
+          "text-ignore-placement": false,
+          "visibility": "none"             // 預設不顯示
+        },
+        paint: {
+          "text-color": "#ffffff",
+          "text-halo-color": "#000000",
+          "text-halo-width": 2
+        }
+      });
+    }
+  }
+
+  function bindCityLabelToggle() {
+    const chk = document.getElementById("chkCityLabel");
+    const setVis = (vis) => {
+      if (map.getLayer("city-labels")) {
+        map.setLayoutProperty("city-labels", "visibility", vis);
+      }
+      updatePinLabelVisibility();
+    };
+    chk.addEventListener("change", () => setVis(chk.checked ? "visible" : "none"));
+    updatePinLabelVisibility();
+  }
+
+  function addPinLayers() {
+    if (!map.getSource(PIN_SOURCE_ID)) {
+      map.addSource(PIN_SOURCE_ID, {
+        type: 'geojson',
+        data: PIN_DATA
+      });
+    } else {
+      map.getSource(PIN_SOURCE_ID).setData(PIN_DATA);
+    }
+
+    if (!map.getLayer(PIN_POINT_LAYER_ID)) {
+      map.addLayer({
+        id: PIN_POINT_LAYER_ID,
+        type: 'circle',
+        source: PIN_SOURCE_ID,
+        layout: {
+          'visibility': 'none'
+        },
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 5, 12, 8],
+          'circle-color': '#ef4444',
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2
+        }
+      });
+    }
+
+    if (!map.getLayer(PIN_LABEL_LAYER_ID)) {
+      map.addLayer({
+        id: PIN_LABEL_LAYER_ID,
+        type: 'symbol',
+        source: PIN_SOURCE_ID,
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 8, 18, 10, 22, 14, 36],
+          'text-font': ['Noto Sans Regular','Open Sans Regular','Arial Unicode MS Regular'],
+          'text-offset': [0, 1.2],
+          'text-anchor': 'top',
+          'text-allow-overlap': true,
+          'visibility': 'none'
+        },
+        paint: {
+          'text-color': '#111111',
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1.5
+        }
+      });
+    }
+  }
+
+  function refreshPins() {
+    const src = map.getSource(PIN_SOURCE_ID);
+    if (src) src.setData(PIN_DATA);
+  }
+
+  function updatePinLabelVisibility() {
+    const showLabels = $('chkCityLabel').checked || $('chkPinMode').checked;
+    if (map.getLayer(PIN_POINT_LAYER_ID)) {
+      map.setLayoutProperty(PIN_POINT_LAYER_ID, 'visibility', showLabels ? 'visible' : 'none');
+    }
+    if (!map.getLayer(PIN_LABEL_LAYER_ID)) return;
+    map.setLayoutProperty(PIN_LABEL_LAYER_ID, 'visibility', showLabels ? 'visible' : 'none');
+  }
+
+  async function loadPins() {
+    try {
+      const res = await fetch(PIN_FILE_URL, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      PIN_DATA.type = 'FeatureCollection';
+      PIN_DATA.features = Array.isArray(data?.features) ? data.features : [];
+      refreshPins();
+      say(`已載入 ${PIN_DATA.features.length} 個圖釘`);
+    } catch (err) {
+      PIN_DATA.type = 'FeatureCollection';
+      PIN_DATA.features = [];
+      refreshPins();
+      say('pins.json 尚未建立，已使用空白圖釘資料');
+    }
+  }
+
+  function exportPinsJson() {
+    const text = JSON.stringify(PIN_DATA, null, 2);
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).catch(() => {});
+    }
+    console.log(text);
+    window.prompt('請複製這份 pins.json 內容，貼回工作區的 pins.json 檔案', text);
+  }
+
+  function bindPinUI() {
+    if (bindPinUI._bound) return;
+    bindPinUI._bound = true;
+
+    const updatePinCursor = () => {
+      map.getCanvas().style.cursor = $('chkPinMode').checked ? 'crosshair' : '';
+    };
+
+    $('chkPinMode').addEventListener('change', () => {
+      updatePinCursor();
+      updatePinLabelVisibility();
+    });
+    updatePinCursor();
+    updatePinLabelVisibility();
+
+    $('btnClearPins').addEventListener('click', () => {
+      PIN_DATA.features = [];
+      refreshPins();
+    });
+    $('btnExportPins').addEventListener('click', exportPinsJson);
+
+    map.on('click', (e) => {
+      const hit = map.queryRenderedFeatures(e.point, { layers: [PIN_POINT_LAYER_ID] })[0];
+      if (hit) {
+        new mapboxgl.Popup({ offset: 12 })
+          .setLngLat(hit.geometry.coordinates)
+          .setHTML(`<div>${hit.properties?.name || '未命名圖釘'}</div>`)
+          .addTo(map);
+        return;
+      }
+
+      if (!$('chkPinMode').checked) return;
+
+      const name = window.prompt('請輸入圖釘名稱');
+      if (name === null) return;
+
+      const trimmed = name.trim();
+      PIN_DATA.features.push({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [e.lngLat.lng, e.lngLat.lat]
+        },
+        properties: {
+          name: trimmed || '未命名圖釘'
+        }
+      });
+      refreshPins();
+
+      new mapboxgl.Popup({ offset: 12 })
+        .setLngLat([e.lngLat.lng, e.lngLat.lat])
+        .setHTML(`<div>${trimmed || '未命名圖釘'}</div>`)
+        .addTo(map);
+    });
+
+    map.on('mouseenter', PIN_POINT_LAYER_ID, () => {
+      map.getCanvas().style.cursor = 'pointer';
+    });
+    map.on('mouseleave', PIN_POINT_LAYER_ID, () => {
+      updatePinCursor();
+    });
+  }
+
+
+  // === 模式地形：讀 bounds → 新增 image source + raster layer（預設不顯示） ===
+  async function addTerrainOverlay() {
+    // 讀入四角座標（來源是 [lat, lon]，需轉成 [lng, lat]）
+    const b = await fetch('terrain_bounds.json').then(r => r.json());
+    const sw = ([lat, lon]) => [lon, lat];
+    const coords = [ sw(b.topleft), sw(b.topright), sw(b.bottomright), sw(b.bottomleft) ];
+
+    if (!map.getSource('terrain-img')) {
+      map.addSource('terrain-img', {
+        type: 'image',
+        url: 'terrain_land_only.png',
+        coordinates: coords
+      });
+    }
+
+    // 放在風場之下：若 wind_JJA_day 已存在，就插到它之前
+    const beforeId = map.getLayer('wind_JJA_day') ? 'wind_JJA_day' : undefined;
+    if (!map.getLayer('terrain-layer')) {
+      map.addLayer({
+        id: 'terrain-layer',
+        type: 'raster',
+        source: 'terrain-img',
+        layout: { visibility: 'none' }, // 預設不顯示
+        paint: { 'raster-opacity': parseFloat($('terrainOpacity').value) }
+      }, beforeId);
+    }
+  }
+
+  async function addAermodTerrainOverlay() {
+    const b = await fetch('AERMOD_terrain_bounds.json').then(r => r.json());
+    const sw = ([lat, lon]) => [lon, lat];
+    const coords = [ sw(b.topleft), sw(b.topright), sw(b.bottomright), sw(b.bottomleft) ];
+
+    if (!map.getSource('aermod-terrain-img')) {
+      map.addSource('aermod-terrain-img', {
+        type: 'image',
+        url: 'AERMOD_terrain.png',
+        coordinates: coords
+      });
+    }
+
+    const beforeId = map.getLayer('wind_JJA_day') ? 'wind_JJA_day' : undefined;
+    if (!map.getLayer('aermod-terrain-layer')) {
+      map.addLayer({
+        id: 'aermod-terrain-layer',
+        type: 'raster',
+        source: 'aermod-terrain-img',
+        layout: { visibility: 'none' },
+        paint: { 'raster-opacity': parseFloat($('aermodTerrainOpacity').value) }
+      }, beforeId);
+    }
+  }
+
+  // 開關/透明度控制
+  function bindTerrainUI() {
+    const chk = $('chkTerrain');
+    const op  = $('terrainOpacity');
+    const opV = $('terrainOpacityV');
+    const legend = $('terrainLegend');
+
+    const applyOpacity = () => {
+      opV.textContent = (+op.value).toFixed(2);
+      if (map.getLayer('terrain-layer')) {
+        map.setPaintProperty('terrain-layer', 'raster-opacity', +op.value);
+      }
+    };
+    op.addEventListener('input', applyOpacity);
+    applyOpacity(); // 初始化數值顯示
+
+    chk.addEventListener('change', () => {
+      const vis = chk.checked ? 'visible' : 'none';
+      if (map.getLayer('terrain-layer')) {
+        map.setLayoutProperty('terrain-layer', 'visibility', vis);
+      }
+      legend.style.display = chk.checked ? 'block' : 'none';
+    });
+  }
+
+  function bindAermodTerrainUI() {
+    const chk = $('chkAermodTerrain');
+    const op  = $('aermodTerrainOpacity');
+    const opV = $('aermodTerrainOpacityV');
+    const legend = $('aermodTerrainLegend');
+
+    const applyOpacity = () => {
+      opV.textContent = (+op.value).toFixed(2);
+      if (map.getLayer('aermod-terrain-layer')) {
+        map.setPaintProperty('aermod-terrain-layer', 'raster-opacity', +op.value);
+      }
+    };
+    op.addEventListener('input', applyOpacity);
+    applyOpacity();
+
+    chk.addEventListener('change', () => {
+      const vis = chk.checked ? 'visible' : 'none';
+      if (map.getLayer('aermod-terrain-layer')) {
+        map.setLayoutProperty('aermod-terrain-layer', 'visibility', vis);
+      }
+      legend.style.display = chk.checked ? 'block' : 'none';
+    });
+  }
+
+</script>
+</body>
+</html>
