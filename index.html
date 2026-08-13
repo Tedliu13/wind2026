@@ -30,6 +30,9 @@
     .flybar button{border:none;border-radius:12px;padding:10px 12px;background:#2563eb;color:#fff;cursor:pointer;
       box-shadow:0 6px 16px rgba(0,0,0,.2)}
     .flybar button:hover{background:#1e40af}
+    .flybar .scenario-btn{background:#0f766e}
+    .flybar .scenario-btn:hover{background:#115e59}
+    .flybar .scenario-btn.active{background:#0b4f49}
     /* 右側地形 legend（預設隱藏） */
     /* 右側地形 legend（預設隱藏）— 最多不超過視窗高度的 1/3 */
 /* 右側地形 legend（預設隱藏）— 最多不超過視窗高度 1/3 */
@@ -99,6 +102,54 @@
       box-shadow:0 4px 10px rgba(0,0,0,.08)
     }
     .mini-btn:hover{ background:#d1d5db; }
+    .primary-btn{
+      border:none; border-radius:10px; padding:9px 12px; background:#1d4ed8; color:#fff; cursor:pointer;
+      box-shadow:0 4px 10px rgba(0,0,0,.12)
+    }
+    .primary-btn:hover{ background:#1e40af; }
+    .modal-backdrop{
+      position:fixed; inset:0; z-index:30; display:none; align-items:center; justify-content:center;
+      background:rgba(15,23,42,.45); padding:20px;
+    }
+    .modal-backdrop.open{display:flex}
+    .modal{
+      width:min(980px, calc(100vw - 40px)); max-height:min(88vh, 920px); overflow:auto;
+      background:rgba(255,255,255,.98); border-radius:18px; box-shadow:0 24px 64px rgba(0,0,0,.28);
+      padding:18px 20px 20px; font:14px/1.5 system-ui,"Noto Sans TC";
+    }
+    .modal-head{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:14px}
+    .modal-title{font-size:18px;font-weight:700}
+    .modal-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:18px}
+    .modal-section{background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:14px}
+    .modal-section h3{margin:0 0 10px;font-size:15px}
+    .scenario-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+    .scenario-tabs button{border:none;border-radius:12px;padding:9px 12px;background:#dbeafe;color:#1e3a8a;cursor:pointer}
+    .scenario-tabs button.active{background:#1d4ed8;color:#fff}
+    .field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .field{display:flex;flex-direction:column;gap:4px}
+    .field input{border:1px solid #cbd5e1;border-radius:10px;padding:8px 10px;font:inherit}
+    .field input[type="number"]{width:100%;box-sizing:border-box}
+    .editor-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .list-block{display:flex;flex-direction:column;gap:10px}
+    .list-item{background:#fff;border:1px solid #dbe3ee;border-radius:12px;padding:10px}
+    .list-item-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+    .list-item-grid.arrow{grid-template-columns:1.4fr repeat(4,minmax(0,1fr))}
+    .list-item-grid.pin{grid-template-columns:1.4fr repeat(2,minmax(0,1fr))}
+    .list-item input{border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font:inherit;width:100%;box-sizing:border-box}
+    .list-item label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#334155}
+    .list-item-actions{display:flex;justify-content:flex-end;margin-top:8px}
+    .muted{color:#64748b;font-size:12px}
+    .mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+    .edit-done-btn{
+      position:absolute; top:12px; left:50%; transform:translateX(-50%);
+      z-index:31; display:none; border:none; border-radius:999px; padding:10px 16px;
+      background:#111827; color:#fff; cursor:pointer; box-shadow:0 10px 28px rgba(0,0,0,.24)
+    }
+    .edit-done-btn.show{display:block}
+    @media (max-width: 900px){
+      .modal-grid{grid-template-columns:1fr}
+      .list-item-grid.pin,.list-item-grid.arrow,.field-grid{grid-template-columns:1fr}
+    }
 
 
   </style>
@@ -182,8 +233,9 @@
   <div class="inline">
   <label><input id="chkCityLabel" type="checkbox"> 顯示縣市名稱</label>
   </div>
+  <div class="title" style="margin-top:6px">情境</div>
   <div class="inline">
-    <label><input id="chkArrows" type="checkbox"> 顯示風向箭頭(放大到某程度才會出現)</label>
+    <button id="btnScenarioSettings" type="button" class="primary-btn">情境設定</button>
   </div>
   <div class="title" style="margin-top:6px">圖釘</div>
   <div class="inline">
@@ -200,6 +252,10 @@
 
 <!-- 右下：飛行視角 -->
 <div class="flybar">
+  <button id="clearScenarioBtn" class="scenario-btn">取消情境</button>
+  <button id="scenario1Btn" class="scenario-btn">情境 1</button>
+  <button id="scenario2Btn" class="scenario-btn">情境 2</button>
+  <button id="scenario3Btn" class="scenario-btn">情境 3</button>
   <button id="flyA">飛行視角 A</button>
   <button id="flyB">飛行視角 B</button>
   <select id="presetSelect" title="縣市視角">
@@ -241,6 +297,94 @@
 </div>
 
 <div id="status" class="status">初始化中…</div>
+<button id="scenarioEditDone" class="edit-done-btn" type="button">完成</button>
+
+<div id="scenarioModalBackdrop" class="modal-backdrop" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="scenarioModalTitle">
+    <div class="modal-head">
+      <div>
+        <div id="scenarioModalTitle" class="modal-title">情境設定</div>
+        <div class="muted">三個情境會一起儲存，可匯出成 <span class="mono">scenario-config.json</span> 手動更新。</div>
+      </div>
+      <button id="btnCloseScenarioModal" type="button" class="mini-btn">關閉</button>
+    </div>
+
+    <div class="scenario-tabs">
+      <button type="button" data-scenario-tab="scenario1">情境 1</button>
+      <button type="button" data-scenario-tab="scenario2">情境 2</button>
+      <button type="button" data-scenario-tab="scenario3">情境 3</button>
+    </div>
+
+    <div class="modal-grid">
+      <div class="modal-section">
+        <h3>視角</h3>
+        <div class="field-grid">
+          <label class="field">名稱<input id="scenarioName" type="text" placeholder="情境名稱"></label>
+          <label class="field">季節
+            <select id="scenarioSeason">
+              <option value="DJF">冬季 (DJF)</option>
+              <option value="JJA">夏季 (JJA)</option>
+            </select>
+          </label>
+          <label class="field">時段
+            <select id="scenarioTod">
+              <option value="day">白天</option>
+              <option value="night">夜晚</option>
+            </select>
+          </label>
+          <label class="field">中心經度<input id="scenarioLng" type="number" step="0.000001"></label>
+          <label class="field">中心緯度<input id="scenarioLat" type="number" step="0.000001"></label>
+          <label class="field">縮放<input id="scenarioZoom" type="number" step="0.01"></label>
+          <label class="field">俯仰<input id="scenarioPitch" type="number" step="0.01"></label>
+          <label class="field">方位<input id="scenarioBearing" type="number" step="0.01"></label>
+        </div>
+        <div class="editor-toolbar">
+          <button id="btnCaptureScenarioView" type="button" class="mini-btn">記錄目前視角</button>
+          <button id="btnPreviewScenario" type="button" class="mini-btn">預覽此情境</button>
+        </div>
+        <div class="editor-toolbar">
+          <label>色帶
+            <select id="scenarioPalette">
+              <option value="teal">多色階</option>
+              <option value="white">白色系</option>
+              <option value="blue">藍色系</option>
+              <option value="fire">橘色系</option>
+            </select>
+          </label>
+          <label><input id="scenarioShowCounty" type="checkbox"> 顯示縣市邊界</label>
+          <label><input id="scenarioShowCityLabel" type="checkbox"> 顯示縣市名稱</label>
+        </div>
+        <div id="scenarioEditorHint" class="muted" style="margin-top:10px"></div>
+      </div>
+
+      <div class="modal-section">
+        <h3>儲存</h3>
+        <div class="editor-toolbar">
+          <button id="btnSaveScenarios" type="button" class="primary-btn">儲存三個情境</button>
+          <button id="btnDownloadScenarios" type="button" class="mini-btn">下載 JSON</button>
+          <button id="btnCopyScenarios" type="button" class="mini-btn">複製 JSON</button>
+        </div>
+        <div id="scenarioSaveStatus" class="muted" style="margin-top:10px">尚未儲存新的情境設定。</div>
+      </div>
+
+      <div class="modal-section">
+        <h3>圖針</h3>
+        <div class="editor-toolbar">
+          <button id="btnScenarioAddPin" type="button" class="mini-btn">以目前視角中心新增圖針</button>
+        </div>
+        <div id="scenarioPinsList" class="list-block" style="margin-top:10px"></div>
+      </div>
+
+      <div class="modal-section">
+        <h3>箭頭</h3>
+        <div class="editor-toolbar">
+          <button id="btnScenarioAddArrow" type="button" class="mini-btn">以目前視角中心新增箭頭</button>
+        </div>
+        <div id="scenarioArrowsList" class="list-block" style="margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
   // 1) 公開 token
@@ -266,6 +410,218 @@
     type: 'FeatureCollection',
     features: []
   };
+  const SCENARIO_STORAGE_KEY = 'wind-scenario-config-v1';
+  const SCENARIO_FILE_URL = 'scenario-config.json';
+  const SCENARIO_IDS = ['scenario1', 'scenario2', 'scenario3'];
+  const SCENARIO_TITLES = {
+    scenario1: '情境 1',
+    scenario2: '情境 2',
+    scenario3: '情境 3'
+  };
+  const SCENARIO_PIN_SOURCE_ID = 'scenario-pins';
+  const SCENARIO_PIN_POINT_LAYER_ID = 'scenario-pins-point';
+  const SCENARIO_PIN_LABEL_LAYER_ID = 'scenario-pins-label';
+  const SCENARIO_ARROW_SOURCE_ID = 'scenario-arrows';
+  const SCENARIO_ARROW_LAYER_ID = 'scenario-arrows-symbol';
+  const SCENARIO_ARROW_HANDLE_SOURCE_ID = 'scenario-arrow-handle';
+  const SCENARIO_ARROW_HANDLE_LINE_LAYER_ID = 'scenario-arrow-handle-line';
+  const SCENARIO_ARROW_HANDLE_POINT_LAYER_ID = 'scenario-arrow-handle-point';
+  let scenarioConfig = createDefaultScenarioConfig();
+  let scenarioDraft = createDefaultScenarioConfig();
+  let activeScenarioId = null;
+  let editingScenarioId = 'scenario1';
+  let scenarioModalBound = false;
+  let scenarioMapInteractionsBound = false;
+  let arrowImageKind = 'canvas';
+  let scenarioEditSession = null;
+
+  function createId(prefix){
+    return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+  function cloneJson(value){
+    return JSON.parse(JSON.stringify(value));
+  }
+  function createEmptyScenario(id){
+    return {
+      id,
+      name: SCENARIO_TITLES[id],
+      season: 'JJA',
+      tod: 'day',
+      palette: 'teal',
+      showCounty: false,
+      showCityLabel: false,
+      camera: null,
+      pins: [],
+      arrows: []
+    };
+  }
+  function createDefaultScenarioConfig(){
+    return {
+      version: 1,
+      updatedAt: null,
+      scenarios: Object.fromEntries(SCENARIO_IDS.map(id => [id, createEmptyScenario(id)]))
+    };
+  }
+  function asNumber(value){
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  }
+  function normalizeCamera(camera){
+    if (!camera || !Array.isArray(camera.center) || camera.center.length < 2) return null;
+    const lng = asNumber(camera.center[0]);
+    const lat = asNumber(camera.center[1]);
+    const zoom = asNumber(camera.zoom);
+    const pitch = asNumber(camera.pitch);
+    const bearing = asNumber(camera.bearing);
+    if ([lng, lat, zoom, pitch, bearing].some(v => v === null)) return null;
+    return { center: [lng, lat], zoom, pitch, bearing };
+  }
+  function normalizePin(pin, idx = 0){
+    const lng = asNumber(pin?.lng ?? pin?.coordinates?.[0]);
+    const lat = asNumber(pin?.lat ?? pin?.coordinates?.[1]);
+    if (lng === null || lat === null) return null;
+    return {
+      id: pin?.id || createId(`pin${idx}`),
+      name: (pin?.name || `圖針 ${idx + 1}`).trim(),
+      lng,
+      lat
+    };
+  }
+  function normalizeArrow(arrow, idx = 0){
+    const lng = asNumber(arrow?.lng ?? arrow?.coordinates?.[0]);
+    const lat = asNumber(arrow?.lat ?? arrow?.coordinates?.[1]);
+    const angle = asNumber(arrow?.angle);
+    const scale = asNumber(arrow?.scale);
+    const opacity = asNumber(arrow?.opacity);
+    if ([lng, lat, angle, scale].some(v => v === null)) return null;
+    return {
+      id: arrow?.id || createId(`arrow${idx}`),
+      name: (arrow?.name || `箭頭 ${idx + 1}`).trim(),
+      lng,
+      lat,
+      angle,
+      scale,
+      opacity: opacity === null ? 1 : Math.max(0, Math.min(1, opacity))
+    };
+  }
+  function normalizeScenario(raw, id){
+    const base = createEmptyScenario(id);
+    return {
+      id,
+      name: (raw?.name || base.name).trim() || base.name,
+      season: raw?.season === 'DJF' ? 'DJF' : 'JJA',
+      tod: raw?.tod === 'night' ? 'night' : 'day',
+      palette: ['teal','white','blue','fire'].includes(raw?.palette) ? raw.palette : 'teal',
+      showCounty: !!raw?.showCounty,
+      showCityLabel: !!raw?.showCityLabel,
+      camera: normalizeCamera(raw?.camera),
+      pins: (Array.isArray(raw?.pins) ? raw.pins : []).map(normalizePin).filter(Boolean),
+      arrows: (Array.isArray(raw?.arrows) ? raw.arrows : []).map(normalizeArrow).filter(Boolean)
+    };
+  }
+  function normalizeScenarioConfig(raw){
+    const base = createDefaultScenarioConfig();
+    const scenarios = {};
+    SCENARIO_IDS.forEach(id => {
+      scenarios[id] = normalizeScenario(raw?.scenarios?.[id], id);
+    });
+    return {
+      version: 1,
+      updatedAt: raw?.updatedAt || base.updatedAt,
+      scenarios
+    };
+  }
+  function scenarioHasValues(scenario){
+    return !!(scenario?.camera || scenario?.pins?.length || scenario?.arrows?.length);
+  }
+  function getScenario(id = activeScenarioId){
+    return scenarioConfig.scenarios[id];
+  }
+  function getEditingScenario(){
+    return scenarioDraft.scenarios[editingScenarioId];
+  }
+  function captureCurrentCamera(){
+    const center = map.getCenter();
+    return {
+      center: [Number(center.lng.toFixed(6)), Number(center.lat.toFixed(6))],
+      zoom: Number(map.getZoom().toFixed(2)),
+      pitch: Number(map.getPitch().toFixed(2)),
+      bearing: Number(map.getBearing().toFixed(2))
+    };
+  }
+  function angleDelta(a, b){
+    const d = Math.abs(((a - b + 540) % 360) - 180);
+    return d;
+  }
+  function isCameraCloseEnough(target){
+    if (!target?.center) return true;
+    const currentCenter = map.getCenter();
+    const targetPoint = map.project(target.center);
+    const currentPoint = map.project(currentCenter);
+    const pixelDiff = Math.hypot(targetPoint.x - currentPoint.x, targetPoint.y - currentPoint.y);
+    const zoomDiff = Math.abs(map.getZoom() - target.zoom);
+    const pitchDiff = Math.abs(map.getPitch() - target.pitch);
+    const bearingDiff = angleDelta(map.getBearing(), target.bearing);
+    return pixelDiff < 6 &&
+      zoomDiff < 0.03 &&
+      pitchDiff < 0.3 &&
+      bearingDiff < 0.5;
+  }
+  function scenarioToPinGeoJSON(scenario){
+    return {
+      type: 'FeatureCollection',
+      features: scenario.pins.map(pin => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [pin.lng, pin.lat] },
+        properties: {
+          id: pin.id,
+          name: pin.name,
+          renderOpacity: pin.renderOpacity ?? 1
+        }
+      }))
+    };
+  }
+  function scenarioToArrowGeoJSON(scenario){
+    return {
+      type: 'FeatureCollection',
+      features: scenario.arrows.map(arrow => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [arrow.lng, arrow.lat] },
+        properties: {
+          id: arrow.id,
+          name: arrow.name,
+          angle: arrow.angle,
+          scale: arrow.scale,
+          opacity: arrow.opacity,
+          renderOpacity: arrow.renderOpacity ?? arrow.opacity
+        }
+      }))
+    };
+  }
+  function setScenarioArrowRenderOpacity(scenario, opacity){
+    if (!scenario?.arrows) return;
+    const next = Math.max(0, Math.min(1, opacity));
+    scenario.arrows.forEach(arrow => {
+      arrow.renderOpacity = next;
+    });
+  }
+  function setScenarioPinRenderOpacity(scenario, opacity){
+    if (!scenario?.pins) return;
+    const next = Math.max(0, Math.min(1, opacity));
+    scenario.pins.forEach(pin => {
+      pin.renderOpacity = next;
+    });
+  }
+  function serializeScenarioConfig(config){
+    return JSON.stringify(normalizeScenarioConfig(config), null, 2);
+  }
+  function isScenarioEditActive(){
+    return !!scenarioEditSession;
+  }
+  function normalizeAngle(angle){
+    const value = Number(angle) % 360;
+    return value < 0 ? value + 360 : value;
+  }
 
 
 
@@ -297,6 +653,755 @@
   map.setMaxZoom(13);
   const $ = id => document.getElementById(id);
   const say = t => { $('status').textContent = t; console.log(t); };
+  const scenarioTabButtons = () => Array.from(document.querySelectorAll('[data-scenario-tab]'));
+
+  function setScenarioSaveStatus(text){
+    const el = $('scenarioSaveStatus');
+    if (el) el.textContent = text;
+  }
+  function refreshScenarioButtonLabels(){
+    const clearBtn = $('clearScenarioBtn');
+    if (clearBtn) clearBtn.classList.toggle('active', !activeScenarioId);
+    SCENARIO_IDS.forEach((id, idx) => {
+      const btn = $(`${id}Btn`);
+      if (!btn) return;
+      const scenario = scenarioConfig.scenarios[id];
+      const suffix = scenario?.name && scenario.name !== SCENARIO_TITLES[id] ? ` ${scenario.name}` : '';
+      btn.textContent = `${SCENARIO_TITLES[id]}${suffix}`;
+      btn.classList.toggle('active', id === activeScenarioId);
+      btn.title = scenario?.camera ? `已設定視角 / ${scenario.pins.length} 圖針 / ${scenario.arrows.length} 箭頭` : '尚未設定視角';
+    });
+  }
+  function ensureScenarioSeed(targetId, sourceId){
+    const target = scenarioDraft.scenarios[targetId];
+    const source = scenarioDraft.scenarios[sourceId];
+    if (!target || !source) return;
+    if (scenarioHasValues(target) || !scenarioHasValues(source)) return;
+    const seeded = cloneJson(source);
+    seeded.id = targetId;
+    seeded.name = target.name || SCENARIO_TITLES[targetId];
+    scenarioDraft.scenarios[targetId] = seeded;
+  }
+  function fillScenarioCameraInputs(camera){
+    $('scenarioLng').value = camera?.center?.[0] ?? '';
+    $('scenarioLat').value = camera?.center?.[1] ?? '';
+    $('scenarioZoom').value = camera?.zoom ?? '';
+    $('scenarioPitch').value = camera?.pitch ?? '';
+    $('scenarioBearing').value = camera?.bearing ?? '';
+  }
+  function fillScenarioMetaInputs(scenario){
+    $('scenarioSeason').value = scenario?.season || 'JJA';
+    $('scenarioTod').value = scenario?.tod || 'day';
+    $('scenarioPalette').value = scenario?.palette || 'teal';
+    $('scenarioShowCounty').checked = !!scenario?.showCounty;
+    $('scenarioShowCityLabel').checked = !!scenario?.showCityLabel;
+  }
+  function pullScenarioCameraInputs(){
+    const lng = asNumber($('scenarioLng').value);
+    const lat = asNumber($('scenarioLat').value);
+    const zoom = asNumber($('scenarioZoom').value);
+    const pitch = asNumber($('scenarioPitch').value);
+    const bearing = asNumber($('scenarioBearing').value);
+    if ([lng, lat, zoom, pitch, bearing].some(v => v === null)) return null;
+    return { center: [lng, lat], zoom, pitch, bearing };
+  }
+  function renderScenarioPinsList(){
+    const scenario = getEditingScenario();
+    const root = $('scenarioPinsList');
+    if (!scenario?.pins?.length) {
+      root.innerHTML = '<div class="muted">此情境尚未設定圖針。</div>';
+      return;
+    }
+    root.innerHTML = scenario.pins.map((pin, idx) => `
+      <div class="list-item" data-pin-index="${idx}">
+        <div class="list-item-grid pin">
+          <label>名稱<input type="text" data-pin-field="name" value="${escapeHtml(pin.name)}"></label>
+          <label>經度<input type="text" value="${pin.lng.toFixed(6)}" readonly></label>
+          <label>緯度<input type="text" value="${pin.lat.toFixed(6)}" readonly></label>
+        </div>
+        <div class="list-item-actions">
+          <button type="button" class="mini-btn" data-pin-edit="${idx}">地圖編輯</button>
+          <button type="button" class="mini-btn" data-pin-remove="${idx}">移除圖針</button>
+        </div>
+      </div>
+    `).join('');
+  }
+  function renderScenarioArrowsList(){
+    const scenario = getEditingScenario();
+    const root = $('scenarioArrowsList');
+    if (!scenario?.arrows?.length) {
+      root.innerHTML = `<div class="muted">此情境尚未設定箭頭。${arrowImageKind === 'arrow.png' ? '目前使用 arrow.png。' : '目前使用程式產生的向量箭頭。'}</div>`;
+      return;
+    }
+    root.innerHTML = scenario.arrows.map((arrow, idx) => `
+      <div class="list-item" data-arrow-index="${idx}">
+        <div class="list-item-grid arrow">
+          <label>名稱<input type="text" data-arrow-field="name" value="${escapeHtml(arrow.name)}"></label>
+          <label>經度<input type="text" value="${arrow.lng.toFixed(6)}" readonly></label>
+          <label>緯度<input type="text" value="${arrow.lat.toFixed(6)}" readonly></label>
+          <label>角度<input type="number" step="0.1" data-arrow-field="angle" value="${arrow.angle}"></label>
+          <label>Scale<input type="number" min="0.2" max="4" step="0.1" data-arrow-field="scale" value="${arrow.scale}"></label>
+          <label>透明度<input type="number" min="0" max="1" step="0.05" data-arrow-field="opacity" value="${arrow.opacity}"></label>
+        </div>
+        <div class="list-item-actions">
+          <button type="button" class="mini-btn" data-arrow-edit="${idx}">地圖編輯</button>
+          <button type="button" class="mini-btn" data-arrow-remove="${idx}">移除箭頭</button>
+        </div>
+      </div>
+    `).join('');
+  }
+  function renderScenarioEditor(){
+    const scenario = getEditingScenario();
+    $('scenarioName').value = scenario.name;
+    fillScenarioMetaInputs(scenario);
+    fillScenarioCameraInputs(scenario.camera);
+    renderScenarioPinsList();
+    renderScenarioArrowsList();
+    scenarioTabButtons().forEach(btn => btn.classList.toggle('active', btn.dataset.scenarioTab === editingScenarioId));
+    $('scenarioEditorHint').textContent = `${SCENARIO_TITLES[editingScenarioId]}：${scenario.camera ? '已設定視角' : '未設定視角'} / ${scenario.pins.length} 圖針 / ${scenario.arrows.length} 箭頭`;
+  }
+  function syncEditingScenarioFromInputs(){
+    const scenario = getEditingScenario();
+    scenario.name = $('scenarioName').value.trim() || SCENARIO_TITLES[editingScenarioId];
+    scenario.season = $('scenarioSeason').value === 'DJF' ? 'DJF' : 'JJA';
+    scenario.tod = $('scenarioTod').value === 'night' ? 'night' : 'day';
+    scenario.palette = ['teal','white','blue','fire'].includes($('scenarioPalette').value) ? $('scenarioPalette').value : 'teal';
+    scenario.showCounty = $('scenarioShowCounty').checked;
+    scenario.showCityLabel = $('scenarioShowCityLabel').checked;
+    scenario.camera = pullScenarioCameraInputs();
+  }
+  function switchEditingScenario(nextId){
+    syncEditingScenarioFromInputs();
+    ensureScenarioSeed(nextId, editingScenarioId);
+    editingScenarioId = nextId;
+    renderScenarioEditor();
+  }
+  function refreshScenarioSourcesForScenario(scenario){
+    const pinSrc = map.getSource(SCENARIO_PIN_SOURCE_ID);
+    if (pinSrc) pinSrc.setData(scenario ? scenarioToPinGeoJSON(scenario) : { type: 'FeatureCollection', features: [] });
+    const arrowSrc = map.getSource(SCENARIO_ARROW_SOURCE_ID);
+    if (arrowSrc) arrowSrc.setData(scenario ? scenarioToArrowGeoJSON(scenario) : { type: 'FeatureCollection', features: [] });
+  }
+  function applyScenarioDisplayOptions(scenario){
+    const palette = scenario?.palette || 'teal';
+    const showCounty = !!scenario?.showCounty;
+    const showCityLabel = !!scenario?.showCityLabel;
+
+    $('pPalette').value = palette;
+    setPaint('raster-particle-color', paletteExpr(palette));
+    drawWindLegend();
+
+    $('chkCounty').checked = showCounty;
+    if (map.getLayer('county-casing')) map.setLayoutProperty('county-casing', 'visibility', showCounty ? 'visible' : 'none');
+    if (map.getLayer('county-outline')) map.setLayoutProperty('county-outline', 'visibility', showCounty ? 'visible' : 'none');
+
+    $('chkCityLabel').checked = showCityLabel;
+    if (map.getLayer('city-labels')) {
+      map.setLayoutProperty('city-labels', 'visibility', showCityLabel ? 'visible' : 'none');
+    }
+    updatePinLabelVisibility();
+  }
+  function applyScenario(id, { fly = true, useDraft = false } = {}){
+    const source = useDraft ? scenarioDraft : scenarioConfig;
+    if (!id) {
+      activeScenarioId = null;
+      refreshScenarioButtonLabels();
+      refreshScenarioSourcesForScenario(null);
+      refreshScenarioArrowHandle();
+      return;
+    }
+    const scenario = source.scenarios[id];
+    if (!scenario) return;
+    activeScenarioId = id;
+    refreshScenarioButtonLabels();
+    const seasonEl = document.querySelector(`input[name="season"][value="${scenario.season}"]`);
+    const todEl = document.querySelector(`input[name="tod"][value="${scenario.tod}"]`);
+    if (seasonEl) seasonEl.checked = true;
+    if (todEl) todEl.checked = true;
+    showOnly(currentKey());
+    applyScenarioDisplayOptions(scenario);
+    const shouldFly = !!(fly && scenario.camera && !isCameraCloseEnough(scenario.camera));
+    if (shouldFly) {
+      setScenarioPinRenderOpacity(scenario, 0);
+      setScenarioArrowRenderOpacity(scenario, 0);
+      refreshScenarioSourcesForScenario(scenario);
+    } else {
+      if (map.isMoving()) map.stop();
+      scenario.pins.forEach(pin => {
+        pin.renderOpacity = 1;
+      });
+      scenario.arrows.forEach(arrow => {
+        arrow.renderOpacity = arrow.opacity ?? 1;
+      });
+      refreshScenarioSourcesForScenario(scenario);
+    }
+    if (shouldFly) {
+      runWithTerrain([scenario.camera], [FLY_DUR], { lockPitch: true }).then(() => {
+        scenario.pins.forEach(pin => animateScenarioPinOpacity(pin, 0, 1000, scenario));
+        scenario.arrows.forEach(arrow => animateScenarioArrowOpacity(arrow, 0, 1000, scenario));
+      });
+    }
+  }
+  async function loadScenarioConfig(){
+    let loaded = null;
+    try {
+      const res = await fetch(SCENARIO_FILE_URL, { cache: 'no-store' });
+      if (res.ok) loaded = await res.json();
+    } catch (_) {}
+    if (!loaded) {
+      const stored = localStorage.getItem(SCENARIO_STORAGE_KEY);
+      if (stored) {
+        try { loaded = JSON.parse(stored); } catch (_) {}
+      }
+    }
+    scenarioConfig = normalizeScenarioConfig(loaded);
+    scenarioDraft = cloneJson(scenarioConfig);
+    refreshScenarioButtonLabels();
+    setScenarioSaveStatus(
+      loaded
+        ? (scenarioConfig.updatedAt ? `目前已從 scenario-config.json 或本機快取載入，設定時間：${scenarioConfig.updatedAt}` : '目前已載入 scenario-config.json 或本機快取。')
+        : '目前使用預設或尚未儲存的情境設定。'
+    );
+  }
+  function saveScenarioConfig(){
+    syncEditingScenarioFromInputs();
+    scenarioDraft.updatedAt = new Date().toISOString();
+    scenarioConfig = normalizeScenarioConfig(scenarioDraft);
+    localStorage.setItem(SCENARIO_STORAGE_KEY, serializeScenarioConfig(scenarioConfig));
+    scenarioDraft = cloneJson(scenarioConfig);
+    refreshScenarioButtonLabels();
+    refreshScenarioSourcesForScenario(getScenario(activeScenarioId));
+    setScenarioSaveStatus(`已於 ${new Date().toLocaleString('zh-TW')} 儲存三個情境。`);
+    say('情境設定已儲存');
+  }
+  function downloadScenarioConfig(){
+    syncEditingScenarioFromInputs();
+    const payload = serializeScenarioConfig(scenarioDraft);
+    const blob = new Blob([payload], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'scenario-config.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  async function copyScenarioConfig(){
+    syncEditingScenarioFromInputs();
+    const payload = serializeScenarioConfig(scenarioDraft);
+    try {
+      await navigator.clipboard.writeText(payload);
+      setScenarioSaveStatus('scenario-config.json 內容已複製到剪貼簿。');
+    } catch (_) {
+      window.prompt('請複製這份 scenario-config.json 內容', payload);
+    }
+  }
+  function openScenarioModal(){
+    scenarioDraft = cloneJson(scenarioConfig);
+    editingScenarioId = activeScenarioId || 'scenario1';
+    $('scenarioModalBackdrop').classList.add('open');
+    $('scenarioModalBackdrop').setAttribute('aria-hidden', 'false');
+    renderScenarioEditor();
+  }
+  function closeScenarioModal(){
+    $('scenarioModalBackdrop').classList.remove('open');
+    $('scenarioModalBackdrop').setAttribute('aria-hidden', 'true');
+  }
+  function escapeHtml(value){
+    return String(value ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;');
+  }
+  function updateScenarioEditUI(){
+    $('scenarioEditDone').classList.toggle('show', isScenarioEditActive());
+    if (!isScenarioEditActive()) {
+      map.getCanvas().style.cursor = $('chkPinMode').checked ? 'crosshair' : '';
+      return;
+    }
+    map.getCanvas().style.cursor = scenarioEditSession.dragging ? 'grabbing' : 'crosshair';
+    $('scenarioEditDone').textContent = scenarioEditSession.type === 'arrow'
+      ? (scenarioEditSession.mode === 'add' ? '完成新增箭頭' : '完成箭頭編輯')
+      : (scenarioEditSession.mode === 'add' ? '完成新增圖針' : '完成圖針編輯');
+  }
+  function updateScenarioDraftSources(){
+    refreshScenarioSourcesForScenario(getEditingScenario());
+    refreshScenarioArrowHandle();
+  }
+  function startScenarioEditSession(type, mode, index = null){
+    syncEditingScenarioFromInputs();
+    closeScenarioModal();
+    scenarioEditSession = {
+      type,
+      mode,
+      scenarioId: editingScenarioId,
+      index,
+      dragging: false
+    };
+    activeScenarioId = editingScenarioId;
+    refreshScenarioButtonLabels();
+    updateScenarioDraftSources();
+    updateScenarioEditUI();
+    if (type === 'pin') {
+      say(mode === 'add' ? '新增圖針：可連續點地圖新增多個圖針，按上方完成' : '編輯圖針：可直接拖拉圖針位置，按上方完成');
+    } else {
+      say(mode === 'add'
+        ? '新增箭頭：可連續點地圖新增多個箭頭，拖拉箭頭移動，拖拉旋轉點改角度，按上方完成'
+        : '編輯箭頭：可拖拉箭頭移動，拖拉旋轉點改角度，按上方完成');
+    }
+  }
+  function finishScenarioEditSession({ reopen = true } = {}){
+    if (!scenarioEditSession) return;
+    scenarioEditSession = null;
+    refreshScenarioArrowHandle();
+    updateScenarioEditUI();
+    if (reopen) {
+      $('scenarioModalBackdrop').classList.add('open');
+      $('scenarioModalBackdrop').setAttribute('aria-hidden', 'false');
+      renderScenarioEditor();
+    }
+  }
+  function getScenarioEditItem(){
+    if (!scenarioEditSession) return null;
+    const scenario = getEditingScenario();
+    const list = scenarioEditSession.type === 'pin' ? scenario.pins : scenario.arrows;
+    return list[scenarioEditSession.index] || null;
+  }
+  function getScenarioItemById(type, id){
+    const scenario = getEditingScenario();
+    const list = type === 'pin' ? scenario.pins : scenario.arrows;
+    return list.find(item => item.id === id) || null;
+  }
+  function setScenarioItemPosition(item, lngLat){
+    item.lng = Number(lngLat.lng.toFixed(6));
+    item.lat = Number(lngLat.lat.toFixed(6));
+  }
+  function ensureScenarioEditItem(lngLat){
+    if (!scenarioEditSession) return null;
+    const scenario = getEditingScenario();
+    const list = scenarioEditSession.type === 'pin' ? scenario.pins : scenario.arrows;
+    let item = list[scenarioEditSession.index];
+    if (scenarioEditSession.mode === 'add') {
+      item = scenarioEditSession.type === 'pin'
+        ? { id: createId('pin'), name: `圖針 ${list.length + 1}`, lng: 0, lat: 0 }
+        : { id: createId('arrow'), name: `箭頭 ${list.length + 1}`, lng: 0, lat: 0, angle: 0, scale: 1, opacity: 1, renderOpacity: 1 };
+      list.push(item);
+      scenarioEditSession.index = list.length - 1;
+    } else if (!item) {
+      return null;
+    }
+    setScenarioItemPosition(item, lngLat);
+    updateScenarioDraftSources();
+    return item;
+  }
+  function beginScenarioDrag(){
+    if (!scenarioEditSession) return;
+    scenarioEditSession.dragging = true;
+    map.dragPan.disable();
+    updateScenarioEditUI();
+  }
+  function endScenarioDrag(){
+    if (!scenarioEditSession) return;
+    scenarioEditSession.dragging = false;
+    map.dragPan.enable();
+    updateScenarioEditUI();
+  }
+  function animateScenarioArrowOpacity(item, fromOpacity = 0, duration = 1000, scenario = null){
+    if (!item) return;
+    if (item._fadeFrame) cancelAnimationFrame(item._fadeFrame);
+    const target = Math.max(0, Math.min(1, item.opacity ?? 1));
+    const start = performance.now();
+    item.renderOpacity = fromOpacity;
+    if (scenario) refreshScenarioSourcesForScenario(scenario);
+    else updateScenarioDraftSources();
+
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / duration);
+      item.renderOpacity = fromOpacity + (target - fromOpacity) * t;
+      if (scenario) refreshScenarioSourcesForScenario(scenario);
+      else updateScenarioDraftSources();
+      if (t < 1) {
+        item._fadeFrame = requestAnimationFrame(tick);
+      } else {
+        item.renderOpacity = target;
+        item._fadeFrame = null;
+        if (scenario) refreshScenarioSourcesForScenario(scenario);
+        else updateScenarioDraftSources();
+      }
+    };
+    item._fadeFrame = requestAnimationFrame(tick);
+  }
+  function animateScenarioPinOpacity(item, fromOpacity = 0, duration = 1000, scenario = null){
+    if (!item) return;
+    if (item._fadeFrame) cancelAnimationFrame(item._fadeFrame);
+    const target = 1;
+    const start = performance.now();
+    item.renderOpacity = fromOpacity;
+    if (scenario) refreshScenarioSourcesForScenario(scenario);
+    else updateScenarioDraftSources();
+
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / duration);
+      item.renderOpacity = fromOpacity + (target - fromOpacity) * t;
+      if (scenario) refreshScenarioSourcesForScenario(scenario);
+      else updateScenarioDraftSources();
+      if (t < 1) {
+        item._fadeFrame = requestAnimationFrame(tick);
+      } else {
+        item.renderOpacity = target;
+        item._fadeFrame = null;
+        if (scenario) refreshScenarioSourcesForScenario(scenario);
+        else updateScenarioDraftSources();
+      }
+    };
+    item._fadeFrame = requestAnimationFrame(tick);
+  }
+  function screenHandleLngLat(item){
+    if (!item) return null;
+    const point = map.project([item.lng, item.lat]);
+    const angleRad = (normalizeAngle(item.angle) * Math.PI) / 180;
+    const distance = 52 * Math.max(0.5, item.scale || 1);
+    const handlePoint = {
+      x: point.x + Math.cos(angleRad) * distance,
+      y: point.y - Math.sin(angleRad) * distance
+    };
+    const lngLat = map.unproject(handlePoint);
+    return [Number(lngLat.lng.toFixed(6)), Number(lngLat.lat.toFixed(6))];
+  }
+  function scenarioArrowHandleGeoJSON(item){
+    if (!item || !scenarioEditSession || scenarioEditSession.type !== 'arrow') {
+      return { type: 'FeatureCollection', features: [] };
+    }
+    const handle = screenHandleLngLat(item);
+    if (!handle) return { type: 'FeatureCollection', features: [] };
+    return {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: [[item.lng, item.lat], handle]
+          },
+          properties: { role: 'line', arrowId: item.id }
+        },
+        {
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: handle
+          },
+          properties: { role: 'handle', arrowId: item.id }
+        }
+      ]
+    };
+  }
+  function refreshScenarioArrowHandle(){
+    const src = map.getSource(SCENARIO_ARROW_HANDLE_SOURCE_ID);
+    if (!src) return;
+    src.setData(scenarioArrowHandleGeoJSON(getScenarioEditItem()));
+  }
+  function setArrowAngleFromLngLat(item, lngLat){
+    const p0 = map.project([item.lng, item.lat]);
+    const p1 = map.project(lngLat);
+    const angle = Math.atan2(p0.y - p1.y, p1.x - p0.x) * 180 / Math.PI;
+    item.angle = Number(normalizeAngle(angle).toFixed(1));
+  }
+  function addScenarioLayers(){
+    if (!map.getSource(SCENARIO_PIN_SOURCE_ID)) {
+      map.addSource(SCENARIO_PIN_SOURCE_ID, { type: 'geojson', data: scenarioToPinGeoJSON(createEmptyScenario('temp')) });
+    }
+    if (!map.getLayer(SCENARIO_PIN_POINT_LAYER_ID)) {
+      map.addLayer({
+        id: SCENARIO_PIN_POINT_LAYER_ID,
+        type: 'circle',
+        source: SCENARIO_PIN_SOURCE_ID,
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 5.5, 12, 8.5],
+          'circle-color': '#f97316',
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
+          'circle-opacity': ['coalesce', ['get', 'renderOpacity'], 1],
+          'circle-stroke-opacity': ['coalesce', ['get', 'renderOpacity'], 1]
+        }
+      });
+    }
+    if (!map.getLayer(SCENARIO_PIN_LABEL_LAYER_ID)) {
+      map.addLayer({
+        id: SCENARIO_PIN_LABEL_LAYER_ID,
+        type: 'symbol',
+        source: SCENARIO_PIN_SOURCE_ID,
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 8, 16, 12, 24, 14, 32],
+          'text-font': ['Noto Sans Regular','Open Sans Regular','Arial Unicode MS Regular'],
+          'text-anchor': 'top',
+          'text-offset': [0, 1.1],
+          'text-allow-overlap': true
+        },
+        paint: {
+          'text-color': '#111827',
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1.6,
+          'text-opacity': ['coalesce', ['get', 'renderOpacity'], 1]
+        }
+      });
+    }
+    if (!map.getSource(SCENARIO_ARROW_SOURCE_ID)) {
+      map.addSource(SCENARIO_ARROW_SOURCE_ID, { type: 'geojson', data: scenarioToArrowGeoJSON(createEmptyScenario('temp')) });
+    }
+    if (!map.getLayer(SCENARIO_ARROW_LAYER_ID)) {
+      map.addLayer({
+        id: SCENARIO_ARROW_LAYER_ID,
+        type: 'symbol',
+        source: SCENARIO_ARROW_SOURCE_ID,
+        layout: {
+          'icon-image': 'wind-arrow',
+          'icon-rotate': ['get', 'angle'],
+          'icon-rotation-alignment': 'map',
+          'icon-allow-overlap': true,
+          'icon-size': ['coalesce', ['get', 'scale'], 1]
+        },
+        paint: {
+          'icon-opacity': ['coalesce', ['get', 'renderOpacity'], ['get', 'opacity'], 0.95]
+        }
+      });
+    }
+    if (!map.getSource(SCENARIO_ARROW_HANDLE_SOURCE_ID)) {
+      map.addSource(SCENARIO_ARROW_HANDLE_SOURCE_ID, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    }
+    if (!map.getLayer(SCENARIO_ARROW_HANDLE_LINE_LAYER_ID)) {
+      map.addLayer({
+        id: SCENARIO_ARROW_HANDLE_LINE_LAYER_ID,
+        type: 'line',
+        source: SCENARIO_ARROW_HANDLE_SOURCE_ID,
+        filter: ['==', ['get', 'role'], 'line'],
+        paint: {
+          'line-color': '#38bdf8',
+          'line-width': 2,
+          'line-dasharray': [2, 1.5]
+        }
+      });
+    }
+    if (!map.getLayer(SCENARIO_ARROW_HANDLE_POINT_LAYER_ID)) {
+      map.addLayer({
+        id: SCENARIO_ARROW_HANDLE_POINT_LAYER_ID,
+        type: 'circle',
+        source: SCENARIO_ARROW_HANDLE_SOURCE_ID,
+        filter: ['==', ['get', 'role'], 'handle'],
+        paint: {
+          'circle-radius': 7,
+          'circle-color': '#38bdf8',
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2
+        }
+      });
+    }
+    if (!scenarioMapInteractionsBound) {
+      scenarioMapInteractionsBound = true;
+      map.on('click', (e) => {
+        if (!scenarioEditSession) return;
+        if (scenarioEditSession.dragging) return;
+        const item = ensureScenarioEditItem(e.lngLat);
+        if (!item) return;
+        updateScenarioEditUI();
+      });
+      map.on('click', SCENARIO_PIN_POINT_LAYER_ID, e => {
+        const feature = e.features?.[0];
+        if (!feature) return;
+        if (scenarioEditSession?.type === 'pin') {
+          e.preventDefault();
+          return;
+        }
+        new mapboxgl.Popup({ offset: 12 })
+          .setLngLat(feature.geometry.coordinates)
+          .setHTML(`<div>${feature.properties?.name || '未命名圖針'}</div>`)
+          .addTo(map);
+      });
+      map.on('mousedown', SCENARIO_PIN_POINT_LAYER_ID, (e) => {
+        if (scenarioEditSession?.type !== 'pin') return;
+        const feature = e.features?.[0];
+        const item = getScenarioItemById('pin', feature?.properties?.id);
+        if (!feature || !item) return;
+        e.preventDefault();
+        scenarioEditSession.index = getEditingScenario().pins.findIndex(pin => pin.id === item.id);
+        beginScenarioDrag();
+        const onMove = (ev) => {
+          setScenarioItemPosition(item, ev.lngLat);
+          updateScenarioDraftSources();
+        };
+        const onUp = () => {
+          map.off('mousemove', onMove);
+          map.off('mouseup', onUp);
+          endScenarioDrag();
+        };
+        map.on('mousemove', onMove);
+        map.on('mouseup', onUp);
+      });
+      map.on('mousedown', SCENARIO_ARROW_LAYER_ID, (e) => {
+        if (scenarioEditSession?.type !== 'arrow') return;
+        const feature = e.features?.[0];
+        const item = getScenarioItemById('arrow', feature?.properties?.id);
+        if (!feature || !item) return;
+        e.preventDefault();
+        scenarioEditSession.index = getEditingScenario().arrows.findIndex(arrow => arrow.id === item.id);
+        beginScenarioDrag();
+        const onMove = (ev) => {
+          setScenarioItemPosition(item, ev.lngLat);
+          updateScenarioDraftSources();
+        };
+        const onUp = () => {
+          map.off('mousemove', onMove);
+          map.off('mouseup', onUp);
+          endScenarioDrag();
+        };
+        map.on('mousemove', onMove);
+        map.on('mouseup', onUp);
+      });
+      map.on('mousedown', SCENARIO_ARROW_HANDLE_POINT_LAYER_ID, (e) => {
+        if (scenarioEditSession?.type !== 'arrow') return;
+        const feature = e.features?.[0];
+        const item = getScenarioItemById('arrow', feature?.properties?.arrowId);
+        if (!feature || !item) return;
+        e.preventDefault();
+        scenarioEditSession.index = getEditingScenario().arrows.findIndex(arrow => arrow.id === item.id);
+        beginScenarioDrag();
+        item.renderOpacity = Math.min(item.opacity ?? 1, 0.15);
+        updateScenarioDraftSources();
+        const onMove = (ev) => {
+          setArrowAngleFromLngLat(item, ev.lngLat);
+          updateScenarioDraftSources();
+        };
+        const onUp = () => {
+          map.off('mousemove', onMove);
+          map.off('mouseup', onUp);
+          endScenarioDrag();
+          animateScenarioArrowOpacity(item, Math.min(item.opacity ?? 1, 0.15), 1000);
+        };
+        map.on('mousemove', onMove);
+        map.on('mouseup', onUp);
+      });
+      map.on('mouseenter', SCENARIO_PIN_POINT_LAYER_ID, () => {
+        if (scenarioEditSession?.type === 'pin') map.getCanvas().style.cursor = 'grab';
+      });
+      map.on('mouseleave', SCENARIO_PIN_POINT_LAYER_ID, () => {
+        if (scenarioEditSession?.type === 'pin' && !scenarioEditSession.dragging) updateScenarioEditUI();
+      });
+      map.on('mouseenter', SCENARIO_ARROW_LAYER_ID, () => {
+        if (scenarioEditSession?.type === 'arrow') map.getCanvas().style.cursor = 'grab';
+      });
+      map.on('mouseleave', SCENARIO_ARROW_LAYER_ID, () => {
+        if (scenarioEditSession?.type === 'arrow' && !scenarioEditSession.dragging) updateScenarioEditUI();
+      });
+      map.on('mouseenter', SCENARIO_ARROW_HANDLE_POINT_LAYER_ID, () => {
+        if (scenarioEditSession?.type === 'arrow') map.getCanvas().style.cursor = 'alias';
+      });
+      map.on('mouseleave', SCENARIO_ARROW_HANDLE_POINT_LAYER_ID, () => {
+        if (scenarioEditSession?.type === 'arrow' && !scenarioEditSession.dragging) updateScenarioEditUI();
+      });
+      map.on('move', () => {
+        if (scenarioEditSession?.type === 'arrow') {
+          refreshScenarioArrowHandle();
+        }
+      });
+    }
+    refreshScenarioSourcesForScenario(getScenario(activeScenarioId));
+    refreshScenarioArrowHandle();
+  }
+  function bindScenarioModal(){
+    if (scenarioModalBound) return;
+    scenarioModalBound = true;
+
+    $('btnScenarioSettings').addEventListener('click', openScenarioModal);
+    $('btnCloseScenarioModal').addEventListener('click', closeScenarioModal);
+    $('scenarioEditDone').addEventListener('click', () => finishScenarioEditSession({ reopen: true }));
+    $('scenarioModalBackdrop').addEventListener('click', (e) => {
+      if (e.target === $('scenarioModalBackdrop')) closeScenarioModal();
+    });
+
+    $('clearScenarioBtn').addEventListener('click', () => applyScenario(null, { fly: false }));
+    SCENARIO_IDS.forEach(id => {
+      $(`${id}Btn`).addEventListener('click', () => applyScenario(id));
+    });
+    scenarioTabButtons().forEach(btn => {
+      btn.addEventListener('click', () => switchEditingScenario(btn.dataset.scenarioTab));
+    });
+
+    ['scenarioName','scenarioSeason','scenarioTod','scenarioPalette','scenarioShowCounty','scenarioShowCityLabel','scenarioLng','scenarioLat','scenarioZoom','scenarioPitch','scenarioBearing'].forEach(id => {
+      $(id).addEventListener('input', syncEditingScenarioFromInputs);
+      $(id).addEventListener('change', syncEditingScenarioFromInputs);
+    });
+
+    $('btnCaptureScenarioView').addEventListener('click', () => {
+      getEditingScenario().camera = captureCurrentCamera();
+      fillScenarioCameraInputs(getEditingScenario().camera);
+      renderScenarioEditor();
+    });
+    $('btnPreviewScenario').addEventListener('click', () => {
+      syncEditingScenarioFromInputs();
+      applyScenario(editingScenarioId, { fly: true, useDraft: true });
+    });
+    $('btnSaveScenarios').addEventListener('click', saveScenarioConfig);
+    $('btnDownloadScenarios').addEventListener('click', downloadScenarioConfig);
+    $('btnCopyScenarios').addEventListener('click', copyScenarioConfig);
+
+    $('btnScenarioAddPin').addEventListener('click', () => {
+      startScenarioEditSession('pin', 'add');
+    });
+    $('btnScenarioAddArrow').addEventListener('click', () => {
+      startScenarioEditSession('arrow', 'add');
+    });
+
+    $('scenarioPinsList').addEventListener('input', (e) => {
+      const row = e.target.closest('[data-pin-index]');
+      if (!row) return;
+      const pin = getEditingScenario().pins[Number(row.dataset.pinIndex)];
+      if (!pin) return;
+      const field = e.target.dataset.pinField;
+      if (field === 'name') pin.name = e.target.value;
+      updateScenarioDraftSources();
+    });
+    $('scenarioPinsList').addEventListener('click', (e) => {
+      const editIdx = e.target.dataset.pinEdit;
+      if (editIdx != null) {
+        startScenarioEditSession('pin', 'edit', Number(editIdx));
+        return;
+      }
+      const idx = e.target.dataset.pinRemove;
+      if (idx == null) return;
+      getEditingScenario().pins.splice(Number(idx), 1);
+      renderScenarioEditor();
+    });
+    $('scenarioArrowsList').addEventListener('input', (e) => {
+      const row = e.target.closest('[data-arrow-index]');
+      if (!row) return;
+      const arrow = getEditingScenario().arrows[Number(row.dataset.arrowIndex)];
+      if (!arrow) return;
+      const field = e.target.dataset.arrowField;
+      if (field === 'name') arrow.name = e.target.value;
+      if (field === 'angle' || field === 'scale' || field === 'opacity') {
+        const value = asNumber(e.target.value);
+        if (value !== null) {
+          arrow[field] = field === 'opacity' ? Math.max(0, Math.min(1, value)) : value;
+        }
+      }
+      updateScenarioDraftSources();
+    });
+    $('scenarioArrowsList').addEventListener('click', (e) => {
+      const editIdx = e.target.dataset.arrowEdit;
+      if (editIdx != null) {
+        startScenarioEditSession('arrow', 'edit', Number(editIdx));
+        return;
+      }
+      const idx = e.target.dataset.arrowRemove;
+      if (idx == null) return;
+      getEditingScenario().arrows.splice(Number(idx), 1);
+      renderScenarioEditor();
+    });
+  }
+  const scenarioConfigReady = loadScenarioConfig();
+  bindScenarioModal();
+  refreshScenarioButtonLabels();
 
   // 啟用地形
   function enableTerrainIfAny(){
@@ -367,38 +1472,12 @@
     return `${s}_${t}`;
   }
 
-  // 全域風向箭頭開關（維持 minzoom:10，不改變你原本的設定）
-  function setAllDirVisibility(vis){
-    Object.keys(WINDDIR_FILES).forEach(k=>{
-      const id = 'dir_' + k;
-      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
-    });
-  }
-  function setDirVisibilityForKey(key, vis){
-    const id = 'dir_' + key;
-    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
-  }
-  function updateArrowsVisibility(){
-    const chk = document.getElementById('chkArrows');
-    const enable = !!(chk && chk.checked);
-    // 先全部關掉
-    setAllDirVisibility('none');
-    // 開啟目前情境（僅當有勾選）→ 因為圖層本身 minzoom:10，縮放<10時仍不會出現
-    if (enable) setDirVisibilityForKey(currentKey(), 'visible');
-  }
   function showOnly(key){
     // 粒子層
     Object.keys(TILESETS).forEach(k=>{
       if (!TILESETS[k]) return;
       const lyrId='wind_'+k;
       if (map.getLayer(lyrId)) map.setLayoutProperty(lyrId,'visibility', k===key?'visible':'none');
-    });
-    // 風向箭頭（關鍵）
-    Object.keys(WINDDIR_FILES).forEach(k=>{
-      const id = 'dir_' + k;               // 如果你的圖層命名是 'dir_'+k+'_fa' 就改這裡
-      if (map.getLayer(id)) {
-        map.setLayoutProperty(id, 'visibility', k === key ? 'visible' : 'none');
-      }
     });
   }
 
@@ -412,6 +1491,7 @@
 
   // 1) 初次載入後畫一次
   map.on('style.load', async ()=>{
+    await scenarioConfigReady;
     enableTerrainIfAny();
     addAllWindLayers();
     await addTerrainOverlay();
@@ -424,19 +1504,15 @@
     bindTerrainUI();
     bindAermodTerrainUI();
     bindPinUI();
+    bindScenarioModal();
     bindCountyToggle();          // ← 新增：綁定面板開關
     drawWindLegend();
-    ensureArrowImage();      // 每次 style 載入都安全重建影像
-    await addWindDirLayers();  // ← 新增：載入風向箭頭層
+    await ensureArrowImage();      // 每次 style 載入都安全重建影像
+    addScenarioLayers();
     // 再呼叫一次 showOnly(currentKey())，確保初始只顯示當前情境
     showOnly(currentKey());
-  
-    // 綁定風向箭頭面板開關 + 初始化狀態
-    const chkAr = document.getElementById('chkArrows');
-    if (chkAr) {
-      chkAr.addEventListener('change', updateArrowsVisibility);
-      updateArrowsVisibility(); // 依勾選狀態（預設未勾選）決定是否顯示箭頭
-    }
+    refreshScenarioButtonLabels();
+    refreshScenarioSourcesForScenario(getScenario(activeScenarioId));
 
 });
 
@@ -457,8 +1533,24 @@
   });
 
   // 產生一個帶黑邊白心的箭頭，使用 ImageData 明確指定尺寸
-  function ensureArrowImage() {
+  function loadImageAsync(url){
+    return new Promise((resolve, reject) => {
+      map.loadImage(url, (error, image) => {
+        if (error || !image) reject(error || new Error(`無法載入 ${url}`));
+        else resolve(image);
+      });
+    });
+  }
+  async function ensureArrowImage() {
     const NAME = 'wind-arrow';
+    try { if (map.hasImage(NAME)) map.removeImage(NAME); } catch(_) {}
+
+    try {
+      const image = await loadImageAsync('arrow.png');
+      map.addImage(NAME, image);
+      arrowImageKind = 'arrow.png';
+      return;
+    } catch (_) {}
 
     // --- 固定整數尺寸，避免非整數 DPR 造成誤差 ---
     const base = 64;                 // 以 64px 為基底畫布
@@ -492,124 +1584,10 @@
     // 轉成 ImageData（長度 = W*H*4）
     const id = ctx.getImageData(0, 0, W, H);
 
-    // 加之前先移除同名影像，避免尺寸不一致
-    try { if (map.hasImage(NAME)) map.removeImage(NAME); } catch(_) {}
-
     // 用 {width,height,data} 明確添加，並設 pixelRatio 與 dpr 一致
     map.addImage(NAME, { width: W, height: H, data: id.data }, { pixelRatio: dpr });
+    arrowImageKind = 'canvas';
   }
-
-
-
-
-  // 把這 4 行改成你放在網站上的檔名/路徑
-  const WINDDIR_FILES = {
-    DJF_day:   'wind_DJF_day_native.json',
-    DJF_night: 'wind_DJF_night_native.json',
-    JJA_day:   'wind_JJA_day_native.json',
-    JJA_night: 'wind_JJA_night_native.json'
-  };
-// 你給我的 native JSON 會包含 U/V 兩筆紀錄（parameterNumber: 2=U, 3=V）
-  // DIR_IS_FROM=true 代表資料是「來向」，會自動 +180 變「去向」
-  const DIR_IS_FROM = true;
-  const ROT_OFFSET  = 90;     // 右轉 90°
-
-  // 讀 native 風場，抽稀每 N 格，輸出 GeoJSON(Point)
-  async function loadDirFromNative(url, gridStep = 3) {
-    const raw = await fetch(url).then(r => {
-      if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
-      return r.json();
-    });
-
-    const arr = Array.isArray(raw) ? raw : (raw.data || raw);
-    const uRec = arr.find(r => r?.header?.parameterNumber === 2); // U 分量
-    const vRec = arr.find(r => r?.header?.parameterNumber === 3); // V 分量
-    if (!uRec || !vRec) throw new Error('找不到 U/V 分量記錄');
-
-    const { nx, ny, lo1, la1, dx, dy } = uRec.header; // 假設 U/V header 一致
-    const U = uRec.data, V = vRec.data;
-    if (!U || !V || U.length !== nx * ny || V.length !== nx * ny) {
-      throw new Error(`U/V 長度與 nx*ny 不符 (nx=${nx}, ny=${ny}, U=${U?.length}, V=${V?.length})`);
-    }
-
-    const lonC = i => lo1 + (i + 0.5) * dx; // 取格心
-    const latC = j => la1 - (j + 0.5) * dy; // 緯度向南遞減（重點）
-
-    const feats = [];
-    for (let j = 0; j < ny; j += gridStep) {
-      for (let i = 0; i < nx; i += gridStep) {
-        const idx = j * nx + i;
-        const u = U[idx], v = V[idx];
-        if (u == null || v == null || isNaN(u) || isNaN(v)) continue;
-
-        // 以正北為 0°、順時針（Mapbox 的 text/icon-rotate 預設）
-        let ang = Math.atan2(u, v) * 180 / Math.PI;   // u(東)、v(北)
-        if (DIR_IS_FROM) ang = (ang + 180) % 360;     // 來向→去向
-        ang = (ang + ROT_OFFSET + 360) % 360;        // ★ 右轉 90°
-        const mag = Math.hypot(u, v);
-
-        feats.push({
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: [ lonC(i), latC(j) ] },
-          properties: { angle: ang, mag, u, v, i, j }
-        });
-      }
-    }
-    return { type: 'FeatureCollection', features: feats };
-  }
-
-
-
-  async function addWindDirLayers(gridStep = 3) {
-    ensureArrowImage(); // 你用 Canvas 注册的箭頭影像
-
-    const added = [];
-    for (const [key, url] of Object.entries(WINDDIR_FILES)) {
-      const srcId = 'dir_src_' + key, lyrId = 'dir_' + key;
-
-      // ★ 用「native→GeoJSON」的轉換
-      let data;
-      try {
-        data = await loadDirFromNative(url, gridStep);
-      } catch (e) {
-        console.error('[winddir] 讀取/轉換失敗 →', key, url, e);
-        continue;
-      }
-
-      if (!map.getSource(srcId)) map.addSource(srcId, { type:'geojson', data });
-      if (!map.getLayer(lyrId)) {
-        map.addLayer({
-          id: lyrId,
-          type: 'symbol',
-          source: srcId,
-          minzoom: 10,
-          layout: {
-            'icon-image': 'wind-arrow',
-            'icon-rotate': ['get', 'angle'],
-            'icon-rotation-alignment': 'map',
-            'icon-allow-overlap': true,
-            'icon-size': [
-              'interpolate', ['linear'], ['zoom'],
-              11, 0.70,
-              13, 1.20,
-              15, 1.50
-            ],
-            'visibility': 'none'
-          },
-          paint: {
-            'icon-opacity': ['interpolate', ['linear'], ['get','mag'], 0, 0.3, 0.5, 1]
-          }
-        });
-        added.push(lyrId);
-      }
-    }
-    console.log('[winddir] layers added:', added);
-  }
-
-
-
-
-
   // === UI 綁定 ===
   const bind = (id, prop, toFixed=2) => {
     const el=$(id), out=$(id+'V');

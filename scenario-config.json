@@ -1,0 +1,154 @@
+{
+  "version": 1,
+  "updatedAt": "2026-08-11T12:59:49.474Z",
+  "scenarios": {
+    "scenario1": {
+      "id": "scenario1",
+      "name": "情境 1",
+      "season": "JJA",
+      "tod": "day",
+      "palette": "white",
+      "showCounty": true,
+      "showCityLabel": true,
+      "camera": {
+        "center": [
+          121.519938,
+          25.077962
+        ],
+        "zoom": 10.96,
+        "pitch": 39.83,
+        "bearing": 0
+      },
+      "pins": [
+        {
+          "id": "pin-msnyxfsm-lxjz4t",
+          "name": "夏季白天風從東北以及西北吹過台北盆地",
+          "lng": 121.556144,
+          "lat": 25.072039
+        }
+      ],
+      "arrows": [
+        {
+          "id": "arrow-msnyyhmh-id09bp",
+          "name": "箭頭 1",
+          "lng": 121.641152,
+          "lat": 25.132394,
+          "angle": 141.4,
+          "scale": 0.7,
+          "opacity": 0.8
+        },
+        {
+          "id": "arrow-mso89y20-9m953e",
+          "name": "箭頭 2",
+          "lng": 121.459118,
+          "lat": 25.141713,
+          "angle": 49.2,
+          "scale": 0.7,
+          "opacity": 0.8
+        },
+        {
+          "id": "arrow-mso8blte-ep4vkq",
+          "name": "箭頭 3",
+          "lng": 121.557392,
+          "lat": 24.95791,
+          "angle": 120,
+          "scale": 0.7,
+          "opacity": 0.8
+        },
+        {
+          "id": "arrow-mso8boez-grnkkk",
+          "name": "箭頭 4",
+          "lng": 121.500664,
+          "lat": 24.998336,
+          "angle": 110,
+          "scale": 0.7,
+          "opacity": 0.8
+        }
+      ]
+    },
+    "scenario2": {
+      "id": "scenario2",
+      "name": "情境 2",
+      "season": "JJA",
+      "tod": "night",
+      "palette": "white",
+      "showCounty": true,
+      "showCityLabel": true,
+      "camera": {
+        "center": [
+          121.519938,
+          25.077962
+        ],
+        "zoom": 10.96,
+        "pitch": 39.83,
+        "bearing": 0
+      },
+      "pins": [
+        {
+          "id": "pin-msnyxfsm-lxjz4t",
+          "name": "夏季夜晚風從山峰吹向台北盆地",
+          "lng": 121.556144,
+          "lat": 25.072039
+        }
+      ],
+      "arrows": [
+        {
+          "id": "arrow-mso8e5a7-b2f3jf",
+          "name": "箭頭 2",
+          "lng": 121.593295,
+          "lat": 24.970493,
+          "angle": 238.9,
+          "scale": 0.7,
+          "opacity": 0.8
+        },
+        {
+          "id": "arrow-mso8e6vt-hl4xan",
+          "name": "箭頭 3",
+          "lng": 121.585634,
+          "lat": 25.109849,
+          "angle": 94.6,
+          "scale": 0.7,
+          "opacity": 0.8
+        },
+        {
+          "id": "arrow-mso8kjeg-wcvq24",
+          "name": "箭頭 5",
+          "lng": 121.510521,
+          "lat": 25.114276,
+          "angle": 95,
+          "scale": 0.7,
+          "opacity": 0.8
+        },
+        {
+          "id": "arrow-mso8lkk0-zil0ad",
+          "name": "箭頭 6",
+          "lng": 121.519322,
+          "lat": 24.9681,
+          "angle": 258.9,
+          "scale": 0.7,
+          "opacity": 0.8
+        }
+      ]
+    },
+    "scenario3": {
+      "id": "scenario3",
+      "name": "情境 3",
+      "season": "JJA",
+      "tod": "night",
+      "palette": "white",
+      "showCounty": true,
+      "showCityLabel": true,
+      "camera": {
+        "center": [
+          121.535733,
+          25.037128
+        ],
+        "zoom": 13,
+        "pitch": 39.83,
+        "bearing": 0
+      },
+      "pins": [],
+      "arrows": []
+    }
+  }
+}
