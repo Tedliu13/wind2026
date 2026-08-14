@@ -146,6 +146,20 @@
       background:#111827; color:#fff; cursor:pointer; box-shadow:0 10px 28px rgba(0,0,0,.24)
     }
     .edit-done-btn.show{display:block}
+    .storybar{
+      position:absolute; left:50%; bottom:25px; transform:translateX(-50%);
+      z-index:11; display:none; gap:8px; align-items:center; flex-wrap:wrap; justify-content:center;
+      max-width:min(72vw, 980px); pointer-events:auto;
+    }
+    .storybar.show{display:flex}
+    .storybar .story-btn{
+      border:none; border-radius:999px; padding:10px 14px; cursor:pointer;
+      background:rgba(255,255,255,.94); color:#111827;
+      box-shadow:0 8px 20px rgba(0,0,0,.18);
+      font:600 14px/1.2 "Noto Sans TC","Open Sans","Arial Unicode MS",system-ui,sans-serif;
+    }
+    .storybar .story-btn:hover{background:#fff}
+    .storybar .story-btn.active{background:#111827;color:#fff}
     @media (max-width: 900px){
       .modal-grid{grid-template-columns:1fr}
       .list-item-grid.pin,.list-item-grid.arrow,.field-grid{grid-template-columns:1fr}
@@ -296,6 +310,8 @@
   <div id="windTicks" class="ticks"></div>
 </div>
 
+<div id="storyBar" class="storybar" aria-live="polite"></div>
+
 <div id="status" class="status">初始化中…</div>
 <button id="scenarioEditDone" class="edit-done-btn" type="button">完成</button>
 
@@ -354,6 +370,25 @@
           <label><input id="scenarioShowCounty" type="checkbox"> 顯示縣市邊界</label>
           <label><input id="scenarioShowCityLabel" type="checkbox"> 顯示縣市名稱</label>
         </div>
+        <div class="editor-toolbar">
+          <span>疊圖</span>
+          <label><input id="scenarioOverlay2605261400" type="checkbox"> 2605261400.tif</label>
+          <label><input id="scenarioOverlay2605260200" type="checkbox"> 2605260200.tif</label>
+        </div>
+        <div class="field-grid" style="margin-top:10px">
+          <label class="field">疊圖透明度
+            <input id="scenarioOverlayOpacity" type="range" min="0" max="1" step="0.01" value="0.72">
+          </label>
+          <label class="field">透明度數值<input id="scenarioOverlayOpacityValue" type="number" min="0" max="1" step="0.01" value="0.72"></label>
+          <label class="field">疊圖順序
+            <select id="scenarioOverlayOrder">
+              <option value="1">1. 底圖上 / 風場下</option>
+              <option value="2">2. 風場上 / 縣市下</option>
+              <option value="3">3. 縣市上 / 圖針下</option>
+              <option value="4">4. 最上層</option>
+            </select>
+          </label>
+        </div>
         <div id="scenarioEditorHint" class="muted" style="margin-top:10px"></div>
       </div>
 
@@ -373,6 +408,14 @@
           <button id="btnScenarioAddPin" type="button" class="mini-btn">以目前視角中心新增圖針</button>
         </div>
         <div id="scenarioPinsList" class="list-block" style="margin-top:10px"></div>
+      </div>
+
+      <div class="modal-section">
+        <h3>說明文字</h3>
+        <div class="editor-toolbar">
+          <button id="btnScenarioAddNote" type="button" class="mini-btn">以目前視角中心新增說明</button>
+        </div>
+        <div id="scenarioNotesList" class="list-block" style="margin-top:10px"></div>
       </div>
 
       <div class="modal-section">
@@ -421,11 +464,27 @@
   const SCENARIO_PIN_SOURCE_ID = 'scenario-pins';
   const SCENARIO_PIN_POINT_LAYER_ID = 'scenario-pins-point';
   const SCENARIO_PIN_LABEL_LAYER_ID = 'scenario-pins-label';
+  const SCENARIO_NOTE_SOURCE_ID = 'scenario-notes';
+  const SCENARIO_NOTE_HIT_LAYER_ID = 'scenario-notes-hit';
+  const SCENARIO_NOTE_EDIT_LAYER_ID = 'scenario-notes-edit';
+  const SCENARIO_NOTE_EDIT_LABEL_LAYER_ID = 'scenario-notes-edit-label';
+  const SCENARIO_ACTIVE_NOTE_SOURCE_ID = 'scenario-active-note';
+  const SCENARIO_ACTIVE_NOTE_LABEL_LAYER_ID = 'scenario-active-note-label';
   const SCENARIO_ARROW_SOURCE_ID = 'scenario-arrows';
   const SCENARIO_ARROW_LAYER_ID = 'scenario-arrows-symbol';
   const SCENARIO_ARROW_HANDLE_SOURCE_ID = 'scenario-arrow-handle';
   const SCENARIO_ARROW_HANDLE_LINE_LAYER_ID = 'scenario-arrow-handle-line';
   const SCENARIO_ARROW_HANDLE_POINT_LAYER_ID = 'scenario-arrow-handle-point';
+  const SCENARIO_OVERLAY_COORDINATES = [
+    [121.0076414, 25.2409586],
+    [121.7419290, 25.2409586],
+    [121.7419290, 24.7597414],
+    [121.0076414, 24.7597414]
+  ];
+  const SCENARIO_OVERLAY_OPTIONS = [
+    { key: 'overlay2605261400', file: '2605261400.tif', inputId: 'scenarioOverlay2605261400', layerId: 'scenario-overlay-2605261400', sourceId: 'scenario-overlay-src-2605261400', url: 'upload/2605261400_overlay.png' },
+    { key: 'overlay2605260200', file: '2605260200.tif', inputId: 'scenarioOverlay2605260200', layerId: 'scenario-overlay-2605260200', sourceId: 'scenario-overlay-src-2605260200', url: 'upload/2605260200_overlay.png' }
+  ];
   let scenarioConfig = createDefaultScenarioConfig();
   let scenarioDraft = createDefaultScenarioConfig();
   let activeScenarioId = null;
@@ -441,6 +500,25 @@
   function cloneJson(value){
     return JSON.parse(JSON.stringify(value));
   }
+  function createDefaultScenarioOverlays(id){
+    if (id === 'scenario1') return ['2605261400.tif'];
+    if (id === 'scenario2') return ['2605260200.tif'];
+    return [];
+  }
+  function normalizeScenarioOverlayOpacity(value){
+    const num = asNumber(value);
+    if (num === null) return 0.72;
+    return Math.max(0, Math.min(1, num));
+  }
+  function normalizeScenarioOverlayOrder(value){
+    const num = Math.round(asNumber(value) ?? 1);
+    return Math.max(1, Math.min(4, num));
+  }
+  function normalizeScenarioOverlays(overlays, id){
+    const valid = new Set(SCENARIO_OVERLAY_OPTIONS.map(option => option.file));
+    if (!Array.isArray(overlays)) return createDefaultScenarioOverlays(id);
+    return Array.from(new Set(overlays.filter(file => valid.has(file))));
+  }
   function createEmptyScenario(id){
     return {
       id,
@@ -450,8 +528,12 @@
       palette: 'teal',
       showCounty: false,
       showCityLabel: false,
+      overlays: createDefaultScenarioOverlays(id),
+      overlayOpacity: 0.72,
+      overlayOrder: 1,
       camera: null,
       pins: [],
+      notes: [],
       arrows: []
     };
   }
@@ -504,6 +586,18 @@
       opacity: opacity === null ? 1 : Math.max(0, Math.min(1, opacity))
     };
   }
+  function normalizeNote(note, idx = 0){
+    const lng = asNumber(note?.lng ?? note?.coordinates?.[0]);
+    const lat = asNumber(note?.lat ?? note?.coordinates?.[1]);
+    if (lng === null || lat === null) return null;
+    return {
+      id: note?.id || createId(`note${idx}`),
+      title: (note?.title || `說明 ${idx + 1}`).trim(),
+      body: String(note?.body || '').trim(),
+      lng,
+      lat
+    };
+  }
   function normalizeScenario(raw, id){
     const base = createEmptyScenario(id);
     return {
@@ -514,8 +608,12 @@
       palette: ['teal','white','blue','fire'].includes(raw?.palette) ? raw.palette : 'teal',
       showCounty: !!raw?.showCounty,
       showCityLabel: !!raw?.showCityLabel,
+      overlays: normalizeScenarioOverlays(raw?.overlays, id),
+      overlayOpacity: normalizeScenarioOverlayOpacity(raw?.overlayOpacity),
+      overlayOrder: normalizeScenarioOverlayOrder(raw?.overlayOrder),
       camera: normalizeCamera(raw?.camera),
       pins: (Array.isArray(raw?.pins) ? raw.pins : []).map(normalizePin).filter(Boolean),
+      notes: (Array.isArray(raw?.notes) ? raw.notes : []).map(normalizeNote).filter(Boolean),
       arrows: (Array.isArray(raw?.arrows) ? raw.arrows : []).map(normalizeArrow).filter(Boolean)
     };
   }
@@ -532,10 +630,54 @@
     };
   }
   function scenarioHasValues(scenario){
-    return !!(scenario?.camera || scenario?.pins?.length || scenario?.arrows?.length);
+    return !!(scenario?.camera || scenario?.pins?.length || scenario?.notes?.length || scenario?.arrows?.length);
   }
   function getScenario(id = activeScenarioId){
     return scenarioConfig.scenarios[id];
+  }
+  function setActiveScenarioStoryNote(note = null){
+    const src = map.getSource(SCENARIO_ACTIVE_NOTE_SOURCE_ID);
+    if (!src) return;
+    src.setData({
+      type: 'FeatureCollection',
+      features: note ? [{
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [note.lng, note.lat] },
+        properties: { body: String(note.body || '') }
+      }] : []
+    });
+    if (map.getLayer(SCENARIO_ACTIVE_NOTE_LABEL_LAYER_ID)) {
+      map.setLayoutProperty(SCENARIO_ACTIVE_NOTE_LABEL_LAYER_ID, 'visibility', note ? 'visible' : 'none');
+    }
+  }
+  function updateStoryBar(scenario){
+    const bar = $('storyBar');
+    if (!bar) return;
+    setActiveScenarioStoryNote(null);
+    const notes = Array.isArray(scenario?.notes) ? scenario.notes : [];
+    if (!notes.length) {
+      bar.classList.remove('show');
+      bar.innerHTML = '';
+      return;
+    }
+    bar.innerHTML = notes.map((note, idx) => `
+      <button type="button" class="story-btn" data-story-note="${idx}">${escapeHtml(note.title || `說明 ${idx + 1}`)}</button>
+    `).join('');
+    bar.classList.add('show');
+    Array.from(bar.querySelectorAll('[data-story-note]')).forEach(btn => {
+      btn.addEventListener('click', () => {
+        const note = notes[Number(btn.dataset.storyNote)];
+        if (!note) return;
+        Array.from(bar.querySelectorAll('.story-btn')).forEach(el => el.classList.remove('active'));
+        btn.classList.add('active');
+        setActiveScenarioStoryNote(note);
+      });
+    });
+    const firstBtn = bar.querySelector('[data-story-note="0"]');
+    if (firstBtn && notes[0]) {
+      firstBtn.classList.add('active');
+      setActiveScenarioStoryNote(notes[0]);
+    }
   }
   function getEditingScenario(){
     return scenarioDraft.scenarios[editingScenarioId];
@@ -577,6 +719,20 @@
           id: pin.id,
           name: pin.name,
           renderOpacity: pin.renderOpacity ?? 1
+        }
+      }))
+    };
+  }
+  function scenarioToNoteGeoJSON(scenario){
+    return {
+      type: 'FeatureCollection',
+      features: scenario.notes.map(note => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [note.lng, note.lat] },
+        properties: {
+          id: note.id,
+          title: note.title,
+          body: note.body
         }
       }))
     };
@@ -669,7 +825,7 @@
       const suffix = scenario?.name && scenario.name !== SCENARIO_TITLES[id] ? ` ${scenario.name}` : '';
       btn.textContent = `${SCENARIO_TITLES[id]}${suffix}`;
       btn.classList.toggle('active', id === activeScenarioId);
-      btn.title = scenario?.camera ? `已設定視角 / ${scenario.pins.length} 圖針 / ${scenario.arrows.length} 箭頭` : '尚未設定視角';
+      btn.title = scenario?.camera ? `已設定視角 / ${scenario.pins.length} 圖針 / ${scenario.notes.length} 說明 / ${scenario.arrows.length} 箭頭` : '尚未設定視角';
     });
   }
   function ensureScenarioSeed(targetId, sourceId){
@@ -695,6 +851,13 @@
     $('scenarioPalette').value = scenario?.palette || 'teal';
     $('scenarioShowCounty').checked = !!scenario?.showCounty;
     $('scenarioShowCityLabel').checked = !!scenario?.showCityLabel;
+    $('scenarioOverlayOpacity').value = String(scenario?.overlayOpacity ?? 0.72);
+    $('scenarioOverlayOpacityValue').value = Number(scenario?.overlayOpacity ?? 0.72).toFixed(2);
+    $('scenarioOverlayOrder').value = String(scenario?.overlayOrder ?? 1);
+    const selected = new Set(scenario?.overlays || []);
+    SCENARIO_OVERLAY_OPTIONS.forEach(option => {
+      $(option.inputId).checked = selected.has(option.file);
+    });
   }
   function pullScenarioCameraInputs(){
     const lng = asNumber($('scenarioLng').value);
@@ -722,6 +885,32 @@
         <div class="list-item-actions">
           <button type="button" class="mini-btn" data-pin-edit="${idx}">地圖編輯</button>
           <button type="button" class="mini-btn" data-pin-remove="${idx}">移除圖針</button>
+        </div>
+      </div>
+    `).join('');
+  }
+  function renderScenarioNotesList(){
+    const scenario = getEditingScenario();
+    const root = $('scenarioNotesList');
+    if (!scenario?.notes?.length) {
+      root.innerHTML = '<div class="muted">此情境尚未設定說明文字。</div>';
+      return;
+    }
+    root.innerHTML = scenario.notes.map((note, idx) => `
+      <div class="list-item" data-note-index="${idx}">
+        <div class="list-item-grid pin">
+          <label>標題<input type="text" data-note-field="title" value="${escapeHtml(note.title)}"></label>
+          <label>經度<input type="text" value="${note.lng.toFixed(6)}" readonly></label>
+          <label>緯度<input type="text" value="${note.lat.toFixed(6)}" readonly></label>
+        </div>
+        <div style="margin-top:8px">
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:#334155">內容
+            <input type="text" data-note-field="body" value="${escapeHtml(note.body)}">
+          </label>
+        </div>
+        <div class="list-item-actions">
+          <button type="button" class="mini-btn" data-note-edit="${idx}">地圖編輯</button>
+          <button type="button" class="mini-btn" data-note-remove="${idx}">移除說明</button>
         </div>
       </div>
     `).join('');
@@ -756,18 +945,27 @@
     fillScenarioMetaInputs(scenario);
     fillScenarioCameraInputs(scenario.camera);
     renderScenarioPinsList();
+    renderScenarioNotesList();
     renderScenarioArrowsList();
     scenarioTabButtons().forEach(btn => btn.classList.toggle('active', btn.dataset.scenarioTab === editingScenarioId));
-    $('scenarioEditorHint').textContent = `${SCENARIO_TITLES[editingScenarioId]}：${scenario.camera ? '已設定視角' : '未設定視角'} / ${scenario.pins.length} 圖針 / ${scenario.arrows.length} 箭頭`;
+    $('scenarioEditorHint').textContent = `${SCENARIO_TITLES[editingScenarioId]}：${scenario.camera ? '已設定視角' : '未設定視角'} / ${scenario.pins.length} 圖針 / ${scenario.notes.length} 說明 / ${scenario.arrows.length} 箭頭 / ${scenario.overlays.length} 個疊圖 / 透明度 ${Number(scenario.overlayOpacity ?? 0.72).toFixed(2)} / 順序 ${scenario.overlayOrder ?? 1}`;
   }
   function syncEditingScenarioFromInputs(){
     const scenario = getEditingScenario();
+    const overlayOpacity = normalizeScenarioOverlayOpacity($('scenarioOverlayOpacity').value);
+    $('scenarioOverlayOpacity').value = String(overlayOpacity);
+    $('scenarioOverlayOpacityValue').value = overlayOpacity.toFixed(2);
     scenario.name = $('scenarioName').value.trim() || SCENARIO_TITLES[editingScenarioId];
     scenario.season = $('scenarioSeason').value === 'DJF' ? 'DJF' : 'JJA';
     scenario.tod = $('scenarioTod').value === 'night' ? 'night' : 'day';
     scenario.palette = ['teal','white','blue','fire'].includes($('scenarioPalette').value) ? $('scenarioPalette').value : 'teal';
     scenario.showCounty = $('scenarioShowCounty').checked;
     scenario.showCityLabel = $('scenarioShowCityLabel').checked;
+    scenario.overlays = SCENARIO_OVERLAY_OPTIONS
+      .filter(option => $(option.inputId).checked)
+      .map(option => option.file);
+    scenario.overlayOpacity = overlayOpacity;
+    scenario.overlayOrder = normalizeScenarioOverlayOrder($('scenarioOverlayOrder').value);
     scenario.camera = pullScenarioCameraInputs();
   }
   function switchEditingScenario(nextId){
@@ -779,8 +977,63 @@
   function refreshScenarioSourcesForScenario(scenario){
     const pinSrc = map.getSource(SCENARIO_PIN_SOURCE_ID);
     if (pinSrc) pinSrc.setData(scenario ? scenarioToPinGeoJSON(scenario) : { type: 'FeatureCollection', features: [] });
+    const noteSrc = map.getSource(SCENARIO_NOTE_SOURCE_ID);
+    if (noteSrc) noteSrc.setData(scenario ? scenarioToNoteGeoJSON(scenario) : { type: 'FeatureCollection', features: [] });
     const arrowSrc = map.getSource(SCENARIO_ARROW_SOURCE_ID);
     if (arrowSrc) arrowSrc.setData(scenario ? scenarioToArrowGeoJSON(scenario) : { type: 'FeatureCollection', features: [] });
+  }
+  function applyScenarioOverlaySelection(overlays = []){
+    const selected = new Set(overlays);
+    SCENARIO_OVERLAY_OPTIONS.forEach(option => {
+      if (!map.getLayer(option.layerId)) return;
+      map.setLayoutProperty(option.layerId, 'visibility', selected.has(option.file) ? 'visible' : 'none');
+    });
+  }
+  function getScenarioOverlayBeforeId(order = 1){
+    const normalized = normalizeScenarioOverlayOrder(order);
+    if (normalized === 1) return map.getLayer('wind_JJA_day') ? 'wind_JJA_day' : undefined;
+    if (normalized === 2) return map.getLayer('county-casing') ? 'county-casing' : undefined;
+    if (normalized === 3) return map.getLayer(SCENARIO_PIN_POINT_LAYER_ID) ? SCENARIO_PIN_POINT_LAYER_ID : undefined;
+    return undefined;
+  }
+  function applyScenarioOverlayStyle(scenario){
+    const opacity = normalizeScenarioOverlayOpacity(scenario?.overlayOpacity);
+    const beforeId = getScenarioOverlayBeforeId(scenario?.overlayOrder ?? 1);
+    SCENARIO_OVERLAY_OPTIONS.forEach(option => {
+      if (!map.getLayer(option.layerId)) return;
+      map.setPaintProperty(option.layerId, 'raster-opacity', opacity);
+      map.setPaintProperty(option.layerId, 'raster-resampling', 'linear');
+    });
+    SCENARIO_OVERLAY_OPTIONS.forEach(option => {
+      if (!map.getLayer(option.layerId)) return;
+      try {
+        map.moveLayer(option.layerId, beforeId);
+      } catch (_) {}
+    });
+  }
+  function addScenarioOverlayLayers(){
+    const beforeId = map.getLayer('wind_JJA_day') ? 'wind_JJA_day' : undefined;
+    SCENARIO_OVERLAY_OPTIONS.forEach(option => {
+      if (!map.getSource(option.sourceId)) {
+        map.addSource(option.sourceId, {
+          type: 'image',
+          url: option.url,
+          coordinates: SCENARIO_OVERLAY_COORDINATES
+        });
+      }
+      if (!map.getLayer(option.layerId)) {
+        map.addLayer({
+          id: option.layerId,
+          type: 'raster',
+          source: option.sourceId,
+          layout: { visibility: 'none' },
+          paint: {
+            'raster-opacity': 0.72,
+            'raster-resampling': 'linear'
+          }
+        }, beforeId);
+      }
+    });
   }
   function applyScenarioDisplayOptions(scenario){
     const palette = scenario?.palette || 'teal';
@@ -799,6 +1052,8 @@
     if (map.getLayer('city-labels')) {
       map.setLayoutProperty('city-labels', 'visibility', showCityLabel ? 'visible' : 'none');
     }
+    applyScenarioOverlayStyle(scenario);
+    applyScenarioOverlaySelection(scenario?.overlays || []);
     updatePinLabelVisibility();
   }
   function applyScenario(id, { fly = true, useDraft = false } = {}){
@@ -808,6 +1063,9 @@
       refreshScenarioButtonLabels();
       refreshScenarioSourcesForScenario(null);
       refreshScenarioArrowHandle();
+      applyScenarioOverlaySelection([]);
+      setActiveScenarioStoryNote(null);
+      updateStoryBar(null);
       return;
     }
     const scenario = source.scenarios[id];
@@ -820,6 +1078,7 @@
     if (todEl) todEl.checked = true;
     showOnly(currentKey());
     applyScenarioDisplayOptions(scenario);
+    updateStoryBar(scenario);
     const shouldFly = !!(fly && scenario.camera && !isCameraCloseEnough(scenario.camera));
     if (shouldFly) {
       setScenarioPinRenderOpacity(scenario, 0);
@@ -871,6 +1130,7 @@
     scenarioDraft = cloneJson(scenarioConfig);
     refreshScenarioButtonLabels();
     refreshScenarioSourcesForScenario(getScenario(activeScenarioId));
+    updateStoryBar(getScenario(activeScenarioId));
     setScenarioSaveStatus(`已於 ${new Date().toLocaleString('zh-TW')} 儲存三個情境。`);
     say('情境設定已儲存');
   }
@@ -917,12 +1177,18 @@
     $('scenarioEditDone').classList.toggle('show', isScenarioEditActive());
     if (!isScenarioEditActive()) {
       map.getCanvas().style.cursor = $('chkPinMode').checked ? 'crosshair' : '';
+      if (map.getLayer(SCENARIO_NOTE_EDIT_LAYER_ID)) map.setLayoutProperty(SCENARIO_NOTE_EDIT_LAYER_ID, 'visibility', 'none');
+      if (map.getLayer(SCENARIO_NOTE_EDIT_LABEL_LAYER_ID)) map.setLayoutProperty(SCENARIO_NOTE_EDIT_LABEL_LAYER_ID, 'visibility', 'none');
       return;
     }
+    if (map.getLayer(SCENARIO_NOTE_EDIT_LAYER_ID)) map.setLayoutProperty(SCENARIO_NOTE_EDIT_LAYER_ID, 'visibility', scenarioEditSession.type === 'note' ? 'visible' : 'none');
+    if (map.getLayer(SCENARIO_NOTE_EDIT_LABEL_LAYER_ID)) map.setLayoutProperty(SCENARIO_NOTE_EDIT_LABEL_LAYER_ID, 'visibility', scenarioEditSession.type === 'note' ? 'visible' : 'none');
     map.getCanvas().style.cursor = scenarioEditSession.dragging ? 'grabbing' : 'crosshair';
     $('scenarioEditDone').textContent = scenarioEditSession.type === 'arrow'
       ? (scenarioEditSession.mode === 'add' ? '完成新增箭頭' : '完成箭頭編輯')
-      : (scenarioEditSession.mode === 'add' ? '完成新增圖針' : '完成圖針編輯');
+      : scenarioEditSession.type === 'note'
+        ? (scenarioEditSession.mode === 'add' ? '完成新增說明' : '完成說明編輯')
+        : (scenarioEditSession.mode === 'add' ? '完成新增圖針' : '完成圖針編輯');
   }
   function updateScenarioDraftSources(){
     refreshScenarioSourcesForScenario(getEditingScenario());
@@ -944,6 +1210,8 @@
     updateScenarioEditUI();
     if (type === 'pin') {
       say(mode === 'add' ? '新增圖針：可連續點地圖新增多個圖針，按上方完成' : '編輯圖針：可直接拖拉圖針位置，按上方完成');
+    } else if (type === 'note') {
+      say(mode === 'add' ? '新增說明：可連續點地圖新增多個說明位置，按上方完成' : '編輯說明：可直接拖拉說明位置，按上方完成');
     } else {
       say(mode === 'add'
         ? '新增箭頭：可連續點地圖新增多個箭頭，拖拉箭頭移動，拖拉旋轉點改角度，按上方完成'
@@ -964,12 +1232,12 @@
   function getScenarioEditItem(){
     if (!scenarioEditSession) return null;
     const scenario = getEditingScenario();
-    const list = scenarioEditSession.type === 'pin' ? scenario.pins : scenario.arrows;
+    const list = scenarioEditSession.type === 'pin' ? scenario.pins : scenarioEditSession.type === 'note' ? scenario.notes : scenario.arrows;
     return list[scenarioEditSession.index] || null;
   }
   function getScenarioItemById(type, id){
     const scenario = getEditingScenario();
-    const list = type === 'pin' ? scenario.pins : scenario.arrows;
+    const list = type === 'pin' ? scenario.pins : type === 'note' ? scenario.notes : scenario.arrows;
     return list.find(item => item.id === id) || null;
   }
   function setScenarioItemPosition(item, lngLat){
@@ -979,11 +1247,13 @@
   function ensureScenarioEditItem(lngLat){
     if (!scenarioEditSession) return null;
     const scenario = getEditingScenario();
-    const list = scenarioEditSession.type === 'pin' ? scenario.pins : scenario.arrows;
+    const list = scenarioEditSession.type === 'pin' ? scenario.pins : scenarioEditSession.type === 'note' ? scenario.notes : scenario.arrows;
     let item = list[scenarioEditSession.index];
     if (scenarioEditSession.mode === 'add') {
       item = scenarioEditSession.type === 'pin'
         ? { id: createId('pin'), name: `圖針 ${list.length + 1}`, lng: 0, lat: 0 }
+        : scenarioEditSession.type === 'note'
+          ? { id: createId('note'), title: `說明 ${list.length + 1}`, body: '', lng: 0, lat: 0 }
         : { id: createId('arrow'), name: `箭頭 ${list.length + 1}`, lng: 0, lat: 0, angle: 0, scale: 1, opacity: 1, renderOpacity: 1 };
       list.push(item);
       scenarioEditSession.index = list.length - 1;
@@ -1111,6 +1381,12 @@
     if (!map.getSource(SCENARIO_PIN_SOURCE_ID)) {
       map.addSource(SCENARIO_PIN_SOURCE_ID, { type: 'geojson', data: scenarioToPinGeoJSON(createEmptyScenario('temp')) });
     }
+    if (!map.getSource(SCENARIO_NOTE_SOURCE_ID)) {
+      map.addSource(SCENARIO_NOTE_SOURCE_ID, { type: 'geojson', data: scenarioToNoteGeoJSON(createEmptyScenario('temp')) });
+    }
+    if (!map.getSource(SCENARIO_ACTIVE_NOTE_SOURCE_ID)) {
+      map.addSource(SCENARIO_ACTIVE_NOTE_SOURCE_ID, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    }
     if (!map.getLayer(SCENARIO_PIN_POINT_LAYER_ID)) {
       map.addLayer({
         id: SCENARIO_PIN_POINT_LAYER_ID,
@@ -1144,6 +1420,66 @@
           'text-halo-color': '#ffffff',
           'text-halo-width': 1.6,
           'text-opacity': ['coalesce', ['get', 'renderOpacity'], 1]
+        }
+      });
+    }
+    if (!map.getLayer(SCENARIO_NOTE_EDIT_LAYER_ID)) {
+      map.addLayer({
+        id: SCENARIO_NOTE_EDIT_LAYER_ID,
+        type: 'circle',
+        source: SCENARIO_NOTE_SOURCE_ID,
+        layout: { visibility: 'none' },
+        paint: {
+          'circle-radius': 10,
+          'circle-color': '#f59e0b',
+          'circle-opacity': 0.22,
+          'circle-stroke-color': '#b45309',
+          'circle-stroke-width': 2,
+          'circle-stroke-opacity': 0.9
+        }
+      });
+    }
+    if (!map.getLayer(SCENARIO_NOTE_EDIT_LABEL_LAYER_ID)) {
+      map.addLayer({
+        id: SCENARIO_NOTE_EDIT_LABEL_LAYER_ID,
+        type: 'symbol',
+        source: SCENARIO_NOTE_SOURCE_ID,
+        layout: {
+          visibility: 'none',
+          'text-field': ['coalesce', ['get', 'body'], ''],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 8, 16, 12, 24, 14, 32],
+          'text-font': ['Noto Sans Regular','Open Sans Regular','Arial Unicode MS Regular'],
+          'text-anchor': 'top',
+          'text-offset': [0, 1.1],
+          'text-allow-overlap': true
+        },
+        paint: {
+          'text-color': '#111827',
+          'text-halo-color': 'rgba(255,255,255,0)',
+          'text-halo-width': 0
+        }
+      });
+    }
+    if (!map.getLayer(SCENARIO_ACTIVE_NOTE_LABEL_LAYER_ID)) {
+      map.addLayer({
+        id: SCENARIO_ACTIVE_NOTE_LABEL_LAYER_ID,
+        type: 'symbol',
+        source: SCENARIO_ACTIVE_NOTE_SOURCE_ID,
+        layout: {
+          visibility: 'none',
+          'text-field': ['coalesce', ['get', 'body'], ''],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 8, 20, 10, 28, 12, 36, 14, 44],
+          'text-font': ['Noto Sans Regular','Open Sans Regular','Arial Unicode MS Regular'],
+          'text-anchor': 'top',
+          'text-offset': [0, 1.1],
+          'text-allow-overlap': true,
+          'text-max-width': 10
+        },
+        paint: {
+          'text-color': '#ffffff',
+          'text-halo-color': '#000000',
+          'text-halo-width': 2.4,
+          'text-halo-blur': 0.4
         }
       });
     }
@@ -1238,6 +1574,26 @@
         map.on('mousemove', onMove);
         map.on('mouseup', onUp);
       });
+      map.on('mousedown', SCENARIO_NOTE_EDIT_LAYER_ID, (e) => {
+        if (scenarioEditSession?.type !== 'note') return;
+        const feature = e.features?.[0];
+        const item = getScenarioItemById('note', feature?.properties?.id);
+        if (!feature || !item) return;
+        e.preventDefault();
+        scenarioEditSession.index = getEditingScenario().notes.findIndex(note => note.id === item.id);
+        beginScenarioDrag();
+        const onMove = (ev) => {
+          setScenarioItemPosition(item, ev.lngLat);
+          updateScenarioDraftSources();
+        };
+        const onUp = () => {
+          map.off('mousemove', onMove);
+          map.off('mouseup', onUp);
+          endScenarioDrag();
+        };
+        map.on('mousemove', onMove);
+        map.on('mouseup', onUp);
+      });
       map.on('mousedown', SCENARIO_ARROW_LAYER_ID, (e) => {
         if (scenarioEditSession?.type !== 'arrow') return;
         const feature = e.features?.[0];
@@ -1287,6 +1643,12 @@
       map.on('mouseleave', SCENARIO_PIN_POINT_LAYER_ID, () => {
         if (scenarioEditSession?.type === 'pin' && !scenarioEditSession.dragging) updateScenarioEditUI();
       });
+      map.on('mouseenter', SCENARIO_NOTE_EDIT_LAYER_ID, () => {
+        if (scenarioEditSession?.type === 'note') map.getCanvas().style.cursor = 'grab';
+      });
+      map.on('mouseleave', SCENARIO_NOTE_EDIT_LAYER_ID, () => {
+        if (scenarioEditSession?.type === 'note' && !scenarioEditSession.dragging) updateScenarioEditUI();
+      });
       map.on('mouseenter', SCENARIO_ARROW_LAYER_ID, () => {
         if (scenarioEditSession?.type === 'arrow') map.getCanvas().style.cursor = 'grab';
       });
@@ -1327,9 +1689,17 @@
       btn.addEventListener('click', () => switchEditingScenario(btn.dataset.scenarioTab));
     });
 
-    ['scenarioName','scenarioSeason','scenarioTod','scenarioPalette','scenarioShowCounty','scenarioShowCityLabel','scenarioLng','scenarioLat','scenarioZoom','scenarioPitch','scenarioBearing'].forEach(id => {
+    ['scenarioName','scenarioSeason','scenarioTod','scenarioPalette','scenarioShowCounty','scenarioShowCityLabel','scenarioOverlay2605261400','scenarioOverlay2605260200','scenarioOverlayOpacity','scenarioOverlayOrder','scenarioLng','scenarioLat','scenarioZoom','scenarioPitch','scenarioBearing'].forEach(id => {
       $(id).addEventListener('input', syncEditingScenarioFromInputs);
       $(id).addEventListener('change', syncEditingScenarioFromInputs);
+    });
+    $('scenarioOverlayOpacityValue').addEventListener('input', () => {
+      $('scenarioOverlayOpacity').value = String(normalizeScenarioOverlayOpacity($('scenarioOverlayOpacityValue').value));
+      syncEditingScenarioFromInputs();
+    });
+    $('scenarioOverlayOpacityValue').addEventListener('change', () => {
+      $('scenarioOverlayOpacity').value = String(normalizeScenarioOverlayOpacity($('scenarioOverlayOpacityValue').value));
+      syncEditingScenarioFromInputs();
     });
 
     $('btnCaptureScenarioView').addEventListener('click', () => {
@@ -1347,6 +1717,9 @@
 
     $('btnScenarioAddPin').addEventListener('click', () => {
       startScenarioEditSession('pin', 'add');
+    });
+    $('btnScenarioAddNote').addEventListener('click', () => {
+      startScenarioEditSession('note', 'add');
     });
     $('btnScenarioAddArrow').addEventListener('click', () => {
       startScenarioEditSession('arrow', 'add');
@@ -1370,6 +1743,27 @@
       const idx = e.target.dataset.pinRemove;
       if (idx == null) return;
       getEditingScenario().pins.splice(Number(idx), 1);
+      renderScenarioEditor();
+    });
+    $('scenarioNotesList').addEventListener('input', (e) => {
+      const row = e.target.closest('[data-note-index]');
+      if (!row) return;
+      const note = getEditingScenario().notes[Number(row.dataset.noteIndex)];
+      if (!note) return;
+      const field = e.target.dataset.noteField;
+      if (field === 'title') note.title = e.target.value;
+      if (field === 'body') note.body = e.target.value;
+      updateScenarioDraftSources();
+    });
+    $('scenarioNotesList').addEventListener('click', (e) => {
+      const editIdx = e.target.dataset.noteEdit;
+      if (editIdx != null) {
+        startScenarioEditSession('note', 'edit', Number(editIdx));
+        return;
+      }
+      const idx = e.target.dataset.noteRemove;
+      if (idx == null) return;
+      getEditingScenario().notes.splice(Number(idx), 1);
       renderScenarioEditor();
     });
     $('scenarioArrowsList').addEventListener('input', (e) => {
@@ -1496,6 +1890,7 @@
     addAllWindLayers();
     await addTerrainOverlay();
     await addAermodTerrainOverlay();
+    addScenarioOverlayLayers();
     await addCountyBoundaries(); // ← 新增：載入縣市邊界（預設隱藏）
     await addCityLabels();    // 生成以 CITY_PRESETS 座標為準的縣市名稱標籤
     addPinLayers();

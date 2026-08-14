@@ -1,1 +1,11 @@
 /data/
+
+# Archived upload files that are not used by the web app runtime
+/archive/
+
+# Upload conversion intermediates / sidecar metadata should not be uploaded
+/upload/*.aux.xml
+/upload/*_tmp.tif
+/upload/*_red_ramp.txt
+/upload/*.qml
+/upload/*con.*

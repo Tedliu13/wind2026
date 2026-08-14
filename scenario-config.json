@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-11T12:59:49.474Z",
+  "updatedAt": "2026-08-14T09:04:24.997Z",
   "scenarios": {
     "scenario1": {
       "id": "scenario1",
@@ -10,29 +10,43 @@
       "palette": "white",
       "showCounty": true,
       "showCityLabel": true,
+      "overlays": [
+        "2605261400.tif"
+      ],
+      "overlayOpacity": 1,
+      "overlayOrder": 1,
       "camera": {
         "center": [
-          121.519938,
-          25.077962
+          121.511505,
+          25.056265
         ],
-        "zoom": 10.96,
-        "pitch": 39.83,
+        "zoom": 11.56,
+        "pitch": 2,
         "bearing": 0
       },
-      "pins": [
+      "pins": [],
+      "notes": [
         {
-          "id": "pin-msnyxfsm-lxjz4t",
-          "name": "夏季白天風從東北以及西北吹過台北盆地",
-          "lng": 121.556144,
-          "lat": 25.072039
+          "id": "note-mssp3dc3-7uvbwl",
+          "title": "開場",
+          "body": "夏季白天風從東北以及西北吹過台北盆地",
+          "lng": 121.556514,
+          "lat": 25.132803
+        },
+        {
+          "id": "note-mssp5j90-fbjqka",
+          "title": "都市熱",
+          "body": "過去大台北日間高溫多以盆地中央的萬華、中正為首，並擴大至士林、內湖、信義等「四大熱區」",
+          "lng": 121.453654,
+          "lat": 25.101887
         }
       ],
       "arrows": [
         {
           "id": "arrow-msnyyhmh-id09bp",
           "name": "箭頭 1",
-          "lng": 121.641152,
-          "lat": 25.132394,
+          "lng": 121.629505,
+          "lat": 25.119594,
           "angle": 141.4,
           "scale": 0.7,
           "opacity": 0.8
@@ -40,8 +54,8 @@
         {
           "id": "arrow-mso89y20-9m953e",
           "name": "箭頭 2",
-          "lng": 121.459118,
-          "lat": 25.141713,
+          "lng": 121.477119,
+          "lat": 25.126201,
           "angle": 49.2,
           "scale": 0.7,
           "opacity": 0.8
@@ -49,8 +63,8 @@
         {
           "id": "arrow-mso8blte-ep4vkq",
           "name": "箭頭 3",
-          "lng": 121.557392,
-          "lat": 24.95791,
+          "lng": 121.586772,
+          "lat": 25.002746,
           "angle": 120,
           "scale": 0.7,
           "opacity": 0.8
@@ -58,9 +72,9 @@
         {
           "id": "arrow-mso8boez-grnkkk",
           "name": "箭頭 4",
-          "lng": 121.500664,
-          "lat": 24.998336,
-          "angle": 110,
+          "lng": 121.499602,
+          "lat": 25.019941,
+          "angle": 80,
           "scale": 0.7,
           "opacity": 0.8
         }
@@ -74,29 +88,43 @@
       "palette": "white",
       "showCounty": true,
       "showCityLabel": true,
+      "overlays": [
+        "2605260200.tif"
+      ],
+      "overlayOpacity": 1,
+      "overlayOrder": 1,
       "camera": {
         "center": [
-          121.519938,
-          25.077962
+          121.511505,
+          25.056265
         ],
-        "zoom": 10.96,
-        "pitch": 39.83,
+        "zoom": 11.56,
+        "pitch": 2,
         "bearing": 0
       },
-      "pins": [
+      "pins": [],
+      "notes": [
         {
-          "id": "pin-msnyxfsm-lxjz4t",
-          "name": "夏季夜晚風從山峰吹向台北盆地",
-          "lng": 121.556144,
-          "lat": 25.072039
+          "id": "note-mssp9ykd-9entfs",
+          "title": "夜間溫度",
+          "body": "台北夜間持續高溫的警訊，呈現典型「熱帶夜」的特徵",
+          "lng": 121.445416,
+          "lat": 25.08095
+        },
+        {
+          "id": "note-msspbf1s-8a5wff",
+          "title": "夜間風場",
+          "body": "夏季夜晚風從山峰吹向台北盆地，對於白天來不及降溫的都市，可能讓夜晚的熱難以散去",
+          "lng": 121.451905,
+          "lat": 25.080976
         }
       ],
       "arrows": [
         {
           "id": "arrow-mso8e5a7-b2f3jf",
           "name": "箭頭 2",
-          "lng": 121.593295,
-          "lat": 24.970493,
+          "lng": 121.575001,
+          "lat": 24.994392,
           "angle": 238.9,
           "scale": 0.7,
           "opacity": 0.8
@@ -104,8 +132,8 @@
         {
           "id": "arrow-mso8e6vt-hl4xan",
           "name": "箭頭 3",
-          "lng": 121.585634,
-          "lat": 25.109849,
+          "lng": 121.56927,
+          "lat": 25.096529,
           "angle": 94.6,
           "scale": 0.7,
           "opacity": 0.8
@@ -113,8 +141,8 @@
         {
           "id": "arrow-mso8kjeg-wcvq24",
           "name": "箭頭 5",
-          "lng": 121.510521,
-          "lat": 25.114276,
+          "lng": 121.511219,
+          "lat": 25.119255,
           "angle": 95,
           "scale": 0.7,
           "opacity": 0.8
@@ -122,8 +150,8 @@
         {
           "id": "arrow-mso8lkk0-zil0ad",
           "name": "箭頭 6",
-          "lng": 121.519322,
-          "lat": 24.9681,
+          "lng": 121.51229,
+          "lat": 24.989859,
           "angle": 258.9,
           "scale": 0.7,
           "opacity": 0.8
@@ -138,16 +166,22 @@
       "palette": "white",
       "showCounty": true,
       "showCityLabel": true,
+      "overlays": [
+        "2605260200.tif"
+      ],
+      "overlayOpacity": 0.95,
+      "overlayOrder": 1,
       "camera": {
         "center": [
-          121.535733,
-          25.037128
+          121.493136,
+          25.082234
         ],
-        "zoom": 13,
+        "zoom": 11.71,
         "pitch": 39.83,
         "bearing": 0
       },
       "pins": [],
+      "notes": [],
       "arrows": []
     }
   }
