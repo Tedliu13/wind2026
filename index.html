@@ -374,6 +374,7 @@
           <span>疊圖</span>
           <label><input id="scenarioOverlay2605261400" type="checkbox"> 2605261400.tif</label>
           <label><input id="scenarioOverlay2605260200" type="checkbox"> 2605260200.tif</label>
+          <label><input id="scenarioShowStreetMap" type="checkbox"> 顯示街道圖（OSM）</label>
         </div>
         <div class="field-grid" style="margin-top:10px">
           <label class="field">疊圖透明度
@@ -390,6 +391,7 @@
           </label>
         </div>
         <div id="scenarioEditorHint" class="muted" style="margin-top:10px"></div>
+        <div class="muted" style="margin-top:6px">街道圖使用 OpenStreetMap raster tiles，僅限制在溫度圖範圍內顯示。</div>
       </div>
 
       <div class="modal-section">
@@ -475,12 +477,15 @@
   const SCENARIO_ARROW_HANDLE_SOURCE_ID = 'scenario-arrow-handle';
   const SCENARIO_ARROW_HANDLE_LINE_LAYER_ID = 'scenario-arrow-handle-line';
   const SCENARIO_ARROW_HANDLE_POINT_LAYER_ID = 'scenario-arrow-handle-point';
+  const SCENARIO_STREET_SOURCE_ID = 'scenario-street-osm';
+  const SCENARIO_STREET_LAYER_ID = 'scenario-street-osm-layer';
   const SCENARIO_OVERLAY_COORDINATES = [
     [121.0076414, 25.2409586],
     [121.7419290, 25.2409586],
     [121.7419290, 24.7597414],
     [121.0076414, 24.7597414]
   ];
+  const SCENARIO_OVERLAY_BOUNDS = [121.0076414, 24.7597414, 121.7419290, 25.2409586];
   const SCENARIO_OVERLAY_OPTIONS = [
     { key: 'overlay2605261400', file: '2605261400.tif', inputId: 'scenarioOverlay2605261400', layerId: 'scenario-overlay-2605261400', sourceId: 'scenario-overlay-src-2605261400', url: 'upload/2605261400_overlay.png' },
     { key: 'overlay2605260200', file: '2605260200.tif', inputId: 'scenarioOverlay2605260200', layerId: 'scenario-overlay-2605260200', sourceId: 'scenario-overlay-src-2605260200', url: 'upload/2605260200_overlay.png' }
@@ -528,6 +533,7 @@
       palette: 'teal',
       showCounty: false,
       showCityLabel: false,
+      showStreetMap: false,
       overlays: createDefaultScenarioOverlays(id),
       overlayOpacity: 0.72,
       overlayOrder: 1,
@@ -608,6 +614,7 @@
       palette: ['teal','white','blue','fire'].includes(raw?.palette) ? raw.palette : 'teal',
       showCounty: !!raw?.showCounty,
       showCityLabel: !!raw?.showCityLabel,
+      showStreetMap: !!raw?.showStreetMap,
       overlays: normalizeScenarioOverlays(raw?.overlays, id),
       overlayOpacity: normalizeScenarioOverlayOpacity(raw?.overlayOpacity),
       overlayOrder: normalizeScenarioOverlayOrder(raw?.overlayOrder),
@@ -851,6 +858,7 @@
     $('scenarioPalette').value = scenario?.palette || 'teal';
     $('scenarioShowCounty').checked = !!scenario?.showCounty;
     $('scenarioShowCityLabel').checked = !!scenario?.showCityLabel;
+    $('scenarioShowStreetMap').checked = !!scenario?.showStreetMap;
     $('scenarioOverlayOpacity').value = String(scenario?.overlayOpacity ?? 0.72);
     $('scenarioOverlayOpacityValue').value = Number(scenario?.overlayOpacity ?? 0.72).toFixed(2);
     $('scenarioOverlayOrder').value = String(scenario?.overlayOrder ?? 1);
@@ -961,6 +969,7 @@
     scenario.palette = ['teal','white','blue','fire'].includes($('scenarioPalette').value) ? $('scenarioPalette').value : 'teal';
     scenario.showCounty = $('scenarioShowCounty').checked;
     scenario.showCityLabel = $('scenarioShowCityLabel').checked;
+    scenario.showStreetMap = $('scenarioShowStreetMap').checked;
     scenario.overlays = SCENARIO_OVERLAY_OPTIONS
       .filter(option => $(option.inputId).checked)
       .map(option => option.file);
@@ -988,6 +997,42 @@
       if (!map.getLayer(option.layerId)) return;
       map.setLayoutProperty(option.layerId, 'visibility', selected.has(option.file) ? 'visible' : 'none');
     });
+  }
+  function addScenarioStreetLayer(){
+    if (!map.getSource(SCENARIO_STREET_SOURCE_ID)) {
+      map.addSource(SCENARIO_STREET_SOURCE_ID, {
+        type: 'raster',
+        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+        tileSize: 256,
+        bounds: SCENARIO_OVERLAY_BOUNDS,
+        attribution: '© OpenStreetMap contributors'
+      });
+    }
+    const beforeId = SCENARIO_OVERLAY_OPTIONS[0]?.layerId;
+    if (!map.getLayer(SCENARIO_STREET_LAYER_ID)) {
+      map.addLayer({
+        id: SCENARIO_STREET_LAYER_ID,
+        type: 'raster',
+        source: SCENARIO_STREET_SOURCE_ID,
+        layout: { visibility: 'none' },
+        paint: {
+          'raster-opacity': 0.9,
+          'raster-saturation': -0.2,
+          'raster-contrast': 0.15,
+          'raster-brightness-min': 0.1,
+          'raster-brightness-max': 0.95,
+          'raster-resampling': 'linear'
+        }
+      }, beforeId);
+    }
+  }
+  function applyScenarioStreetLayer(scenario){
+    if (!map.getLayer(SCENARIO_STREET_LAYER_ID)) return;
+    const visible = !!scenario?.showStreetMap;
+    map.setLayoutProperty(SCENARIO_STREET_LAYER_ID, 'visibility', visible ? 'visible' : 'none');
+    try {
+      map.moveLayer(SCENARIO_STREET_LAYER_ID, SCENARIO_OVERLAY_OPTIONS[0]?.layerId);
+    } catch (_) {}
   }
   function getScenarioOverlayBeforeId(order = 1){
     const normalized = normalizeScenarioOverlayOrder(order);
@@ -1052,6 +1097,7 @@
     if (map.getLayer('city-labels')) {
       map.setLayoutProperty('city-labels', 'visibility', showCityLabel ? 'visible' : 'none');
     }
+    applyScenarioStreetLayer(scenario);
     applyScenarioOverlayStyle(scenario);
     applyScenarioOverlaySelection(scenario?.overlays || []);
     updatePinLabelVisibility();
@@ -1063,6 +1109,7 @@
       refreshScenarioButtonLabels();
       refreshScenarioSourcesForScenario(null);
       refreshScenarioArrowHandle();
+      applyScenarioStreetLayer(null);
       applyScenarioOverlaySelection([]);
       setActiveScenarioStoryNote(null);
       updateStoryBar(null);
@@ -1689,7 +1736,7 @@
       btn.addEventListener('click', () => switchEditingScenario(btn.dataset.scenarioTab));
     });
 
-    ['scenarioName','scenarioSeason','scenarioTod','scenarioPalette','scenarioShowCounty','scenarioShowCityLabel','scenarioOverlay2605261400','scenarioOverlay2605260200','scenarioOverlayOpacity','scenarioOverlayOrder','scenarioLng','scenarioLat','scenarioZoom','scenarioPitch','scenarioBearing'].forEach(id => {
+    ['scenarioName','scenarioSeason','scenarioTod','scenarioPalette','scenarioShowCounty','scenarioShowCityLabel','scenarioShowStreetMap','scenarioOverlay2605261400','scenarioOverlay2605260200','scenarioOverlayOpacity','scenarioOverlayOrder','scenarioLng','scenarioLat','scenarioZoom','scenarioPitch','scenarioBearing'].forEach(id => {
       $(id).addEventListener('input', syncEditingScenarioFromInputs);
       $(id).addEventListener('change', syncEditingScenarioFromInputs);
     });
@@ -1890,6 +1937,7 @@
     addAllWindLayers();
     await addTerrainOverlay();
     await addAermodTerrainOverlay();
+    addScenarioStreetLayer();
     addScenarioOverlayLayers();
     await addCountyBoundaries(); // ← 新增：載入縣市邊界（預設隱藏）
     await addCityLabels();    // 生成以 CITY_PRESETS 座標為準的縣市名稱標籤
