@@ -12,19 +12,20 @@ RAW_PATH = Path("upload/osm_major_roads_raw.json")
 REF_TIF = Path("upload/2605260200.tif")
 PNG_OUT = Path("upload/osm_major_roads_overlay.png")
 TIF_OUT = Path("upload/osm_major_roads_overlay.tif")
+RESOLUTION_SCALE = 6
 
 
 STYLE = {
-    "motorway": {"outer": 8, "inner": 4, "outer_rgba": (0, 0, 0, 140), "inner_rgba": (245, 245, 245, 215)},
-    "trunk": {"outer": 8, "inner": 4, "outer_rgba": (0, 0, 0, 140), "inner_rgba": (245, 245, 245, 215)},
-    "primary": {"outer": 7, "inner": 3, "outer_rgba": (0, 0, 0, 128), "inner_rgba": (235, 235, 235, 205)},
-    "secondary": {"outer": 5, "inner": 2, "outer_rgba": (0, 0, 0, 118), "inner_rgba": (220, 220, 220, 190)},
-    "tertiary": {"outer": 3, "inner": 1, "outer_rgba": (0, 0, 0, 105), "inner_rgba": (205, 205, 205, 170)},
-    "motorway_link": {"outer": 4, "inner": 2, "outer_rgba": (0, 0, 0, 118), "inner_rgba": (225, 225, 225, 195)},
-    "trunk_link": {"outer": 4, "inner": 2, "outer_rgba": (0, 0, 0, 118), "inner_rgba": (225, 225, 225, 195)},
-    "primary_link": {"outer": 4, "inner": 2, "outer_rgba": (0, 0, 0, 112), "inner_rgba": (220, 220, 220, 185)},
-    "secondary_link": {"outer": 3, "inner": 1, "outer_rgba": (0, 0, 0, 105), "inner_rgba": (210, 210, 210, 170)},
-    "tertiary_link": {"outer": 3, "inner": 1, "outer_rgba": (0, 0, 0, 105), "inner_rgba": (210, 210, 210, 170)},
+    "motorway": {"outer": 14, "inner": 8, "outer_rgba": (20, 24, 32, 245), "inner_rgba": (255, 255, 255, 255)},
+    "trunk": {"outer": 13, "inner": 7, "outer_rgba": (20, 24, 32, 240), "inner_rgba": (255, 255, 255, 250)},
+    "primary": {"outer": 11, "inner": 6, "outer_rgba": (24, 30, 38, 230), "inner_rgba": (248, 248, 248, 245)},
+    "secondary": {"outer": 9, "inner": 5, "outer_rgba": (28, 34, 42, 220), "inner_rgba": (238, 238, 238, 235)},
+    "tertiary": {"outer": 7, "inner": 3, "outer_rgba": (32, 38, 46, 205), "inner_rgba": (228, 228, 228, 220)},
+    "motorway_link": {"outer": 8, "inner": 4, "outer_rgba": (24, 30, 38, 225), "inner_rgba": (245, 245, 245, 240)},
+    "trunk_link": {"outer": 8, "inner": 4, "outer_rgba": (24, 30, 38, 225), "inner_rgba": (245, 245, 245, 240)},
+    "primary_link": {"outer": 7, "inner": 3, "outer_rgba": (28, 34, 42, 215), "inner_rgba": (238, 238, 238, 230)},
+    "secondary_link": {"outer": 6, "inner": 3, "outer_rgba": (30, 36, 44, 205), "inner_rgba": (230, 230, 230, 220)},
+    "tertiary_link": {"outer": 5, "inner": 2, "outer_rgba": (32, 38, 46, 195), "inner_rgba": (220, 220, 220, 210)},
 }
 
 DRAW_ORDER = [
@@ -53,14 +54,24 @@ def load_reference():
     ymax = gt[3]
     xmax = xmin + gt[1] * width
     ymin = ymax + gt[5] * height
+    scaled_width = width * RESOLUTION_SCALE
+    scaled_height = height * RESOLUTION_SCALE
+    scaled_gt = (
+        gt[0],
+        gt[1] / RESOLUTION_SCALE,
+        gt[2],
+        gt[3],
+        gt[4],
+        gt[5] / RESOLUTION_SCALE,
+    )
     return {
-        "width": width,
-        "height": height,
+        "width": scaled_width,
+        "height": scaled_height,
         "xmin": xmin,
         "ymin": ymin,
         "xmax": xmax,
         "ymax": ymax,
-        "gt": gt,
+        "gt": scaled_gt,
         "proj": proj,
     }
 

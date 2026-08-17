@@ -374,7 +374,7 @@
           <span>疊圖</span>
           <label><input id="scenarioOverlay2605261400" type="checkbox"> 2605261400.tif</label>
           <label><input id="scenarioOverlay2605260200" type="checkbox"> 2605260200.tif</label>
-          <label><input id="scenarioShowStreetMap" type="checkbox"> 顯示街道圖（OSM）</label>
+          <label><input id="scenarioShowStreetMap" type="checkbox"> 顯示道路圖</label>
         </div>
         <div class="field-grid" style="margin-top:10px">
           <label class="field">疊圖透明度
@@ -391,7 +391,7 @@
           </label>
         </div>
         <div id="scenarioEditorHint" class="muted" style="margin-top:10px"></div>
-        <div class="muted" style="margin-top:6px">街道圖使用 OpenStreetMap raster tiles，僅限制在溫度圖範圍內顯示。</div>
+        <div class="muted" style="margin-top:6px">道路圖使用 upload/Road.shp 轉出的透明 PNG，範圍與溫度圖一致。</div>
       </div>
 
       <div class="modal-section">
@@ -477,8 +477,10 @@
   const SCENARIO_ARROW_HANDLE_SOURCE_ID = 'scenario-arrow-handle';
   const SCENARIO_ARROW_HANDLE_LINE_LAYER_ID = 'scenario-arrow-handle-line';
   const SCENARIO_ARROW_HANDLE_POINT_LAYER_ID = 'scenario-arrow-handle-point';
-  const SCENARIO_STREET_SOURCE_ID = 'scenario-street-osm';
-  const SCENARIO_STREET_LAYER_ID = 'scenario-street-osm-layer';
+  const SCENARIO_STREET_SOURCE_ID = 'scenario-road-geojson';
+  const SCENARIO_STREET_FILL_LAYER_ID = 'scenario-road-fill-layer';
+  const SCENARIO_STREET_LINE_LAYER_ID = 'scenario-road-line-layer';
+  const SCENARIO_ASSET_VERSION = '20260817-5';
   const SCENARIO_OVERLAY_COORDINATES = [
     [121.0076414, 25.2409586],
     [121.7419290, 25.2409586],
@@ -1001,29 +1003,45 @@
   function addScenarioStreetLayer(){
     if (!map.getSource(SCENARIO_STREET_SOURCE_ID)) {
       map.addSource(SCENARIO_STREET_SOURCE_ID, {
-        type: 'image',
-        url: 'upload/osm_major_roads_overlay.png',
-        coordinates: SCENARIO_OVERLAY_COORDINATES
+        type: 'geojson',
+        data: `upload/Road.geojson?v=${SCENARIO_ASSET_VERSION}`
       });
     }
     const beforeId = SCENARIO_OVERLAY_OPTIONS[0]?.layerId;
-    if (!map.getLayer(SCENARIO_STREET_LAYER_ID)) {
+    if (!map.getLayer(SCENARIO_STREET_FILL_LAYER_ID)) {
       map.addLayer({
-        id: SCENARIO_STREET_LAYER_ID,
-        type: 'raster',
+        id: SCENARIO_STREET_FILL_LAYER_ID,
+        type: 'fill',
         source: SCENARIO_STREET_SOURCE_ID,
         layout: { visibility: 'none' },
         paint: {
-          'raster-opacity': 1,
-          'raster-resampling': 'linear'
+          'fill-color': '#111827',
+          'fill-opacity': 0.22
+        }
+      }, beforeId);
+    }
+    if (!map.getLayer(SCENARIO_STREET_LINE_LAYER_ID)) {
+      map.addLayer({
+        id: SCENARIO_STREET_LINE_LAYER_ID,
+        type: 'line',
+        source: SCENARIO_STREET_SOURCE_ID,
+        layout: { visibility: 'none' },
+        paint: {
+          'line-color': '#020617',
+          'line-opacity': 0.45,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 9, 0.4, 11, 0.7, 13, 1.1, 15, 1.8]
         }
       }, beforeId);
     }
   }
   function applyScenarioStreetLayer(scenario){
-    if (!map.getLayer(SCENARIO_STREET_LAYER_ID)) return;
     const visible = !!scenario?.showStreetMap;
-    map.setLayoutProperty(SCENARIO_STREET_LAYER_ID, 'visibility', visible ? 'visible' : 'none');
+    if (map.getLayer(SCENARIO_STREET_FILL_LAYER_ID)) {
+      map.setLayoutProperty(SCENARIO_STREET_FILL_LAYER_ID, 'visibility', visible ? 'visible' : 'none');
+    }
+    if (map.getLayer(SCENARIO_STREET_LINE_LAYER_ID)) {
+      map.setLayoutProperty(SCENARIO_STREET_LINE_LAYER_ID, 'visibility', visible ? 'visible' : 'none');
+    }
   }
   function getScenarioOverlayBeforeId(order = 1){
     const normalized = normalizeScenarioOverlayOrder(order);
@@ -1032,12 +1050,19 @@
     if (normalized === 3) return map.getLayer(SCENARIO_PIN_POINT_LAYER_ID) ? SCENARIO_PIN_POINT_LAYER_ID : undefined;
     return undefined;
   }
+  function getWindLayerAnchor(){
+    const ids = ['wind_JJA_day', 'wind_JJA_night', 'wind_DJF_day', 'wind_DJF_night'];
+    return ids.find(id => map.getLayer(id)) || undefined;
+  }
   function applyScenarioOverlayStyle(scenario){
     const opacity = normalizeScenarioOverlayOpacity(scenario?.overlayOpacity);
     const beforeId = getScenarioOverlayBeforeId(scenario?.overlayOrder ?? 1);
-    if (map.getLayer(SCENARIO_STREET_LAYER_ID)) {
-      map.setPaintProperty(SCENARIO_STREET_LAYER_ID, 'raster-opacity', 1);
-      map.setPaintProperty(SCENARIO_STREET_LAYER_ID, 'raster-resampling', 'nearest');
+    const windBeforeId = getWindLayerAnchor();
+    if (map.getLayer(SCENARIO_STREET_FILL_LAYER_ID)) {
+      map.setPaintProperty(SCENARIO_STREET_FILL_LAYER_ID, 'fill-opacity', 0.22);
+    }
+    if (map.getLayer(SCENARIO_STREET_LINE_LAYER_ID)) {
+      map.setPaintProperty(SCENARIO_STREET_LINE_LAYER_ID, 'line-opacity', 0.45);
     }
     SCENARIO_OVERLAY_OPTIONS.forEach(option => {
       if (!map.getLayer(option.layerId)) return;
@@ -1047,14 +1072,25 @@
     SCENARIO_OVERLAY_OPTIONS.forEach(option => {
       if (!map.getLayer(option.layerId)) return;
       try {
-        map.moveLayer(option.layerId, beforeId);
+        map.moveLayer(option.layerId, beforeId || windBeforeId);
       } catch (_) {}
     });
-    if (map.getLayer(SCENARIO_STREET_LAYER_ID)) {
+    if (map.getLayer(SCENARIO_STREET_FILL_LAYER_ID)) {
       try {
-        map.moveLayer(SCENARIO_STREET_LAYER_ID, beforeId);
+        map.moveLayer(SCENARIO_STREET_FILL_LAYER_ID, windBeforeId);
       } catch (_) {}
     }
+    if (map.getLayer(SCENARIO_STREET_LINE_LAYER_ID)) {
+      try {
+        map.moveLayer(SCENARIO_STREET_LINE_LAYER_ID, windBeforeId);
+      } catch (_) {}
+    }
+    SCENARIO_OVERLAY_OPTIONS.forEach(option => {
+      if (!map.getLayer(option.layerId) || !map.getLayer(SCENARIO_STREET_FILL_LAYER_ID)) return;
+      try {
+        map.moveLayer(option.layerId, SCENARIO_STREET_FILL_LAYER_ID);
+      } catch (_) {}
+    });
   }
   function addScenarioOverlayLayers(){
     const beforeId = map.getLayer('wind_JJA_day') ? 'wind_JJA_day' : undefined;

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-14T09:04:24.997Z",
+  "updatedAt": "2026-08-17T06:54:20.254Z",
   "scenarios": {
     "scenario1": {
       "id": "scenario1",
@@ -172,7 +172,7 @@
       "overlays": [
         "2605260200.tif"
       ],
-      "overlayOpacity": 0.95,
+      "overlayOpacity": 1,
       "overlayOrder": 1,
       "camera": {
         "center": [
