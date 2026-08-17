@@ -375,6 +375,8 @@
           <label><input id="scenarioOverlay2605261400" type="checkbox"> 2605261400.tif</label>
           <label><input id="scenarioOverlay2605260200" type="checkbox"> 2605260200.tif</label>
           <label><input id="scenarioShowStreetMap" type="checkbox"> 顯示道路圖</label>
+          <label><input id="scenarioShowTaipeiTowns" type="checkbox"> 顯示台北市鄉鎮區</label>
+          <label><input id="scenarioShowNewTaipeiTowns" type="checkbox"> 顯示新北市鄉鎮區</label>
         </div>
         <div class="field-grid" style="margin-top:10px">
           <label class="field">疊圖透明度
@@ -391,7 +393,7 @@
           </label>
         </div>
         <div id="scenarioEditorHint" class="muted" style="margin-top:10px"></div>
-        <div class="muted" style="margin-top:6px">道路圖使用 upload/Road.shp 轉出的透明 PNG，範圍與溫度圖一致。</div>
+        <div class="muted" style="margin-top:6px">道路圖使用 upload/Road.shp 轉出的 GeoJSON；台北市與新北市鄉鎮區各自使用對應 topojson 轉出的 GeoJSON。</div>
       </div>
 
       <div class="modal-section">
@@ -480,7 +482,15 @@
   const SCENARIO_STREET_SOURCE_ID = 'scenario-road-geojson';
   const SCENARIO_STREET_FILL_LAYER_ID = 'scenario-road-fill-layer';
   const SCENARIO_STREET_LINE_LAYER_ID = 'scenario-road-line-layer';
-  const SCENARIO_ASSET_VERSION = '20260817-5';
+  const SCENARIO_TAIPEI_TOWN_SOURCE_ID = 'scenario-taipei-town-geojson';
+  const SCENARIO_TAIPEI_TOWN_FILL_LAYER_ID = 'scenario-taipei-town-fill-layer';
+  const SCENARIO_TAIPEI_TOWN_LINE_LAYER_ID = 'scenario-taipei-town-line-layer';
+  const SCENARIO_TAIPEI_TOWN_LABEL_LAYER_ID = 'scenario-taipei-town-label-layer';
+  const SCENARIO_NEW_TAIPEI_TOWN_SOURCE_ID = 'scenario-newtaipei-town-geojson';
+  const SCENARIO_NEW_TAIPEI_TOWN_FILL_LAYER_ID = 'scenario-newtaipei-town-fill-layer';
+  const SCENARIO_NEW_TAIPEI_TOWN_LINE_LAYER_ID = 'scenario-newtaipei-town-line-layer';
+  const SCENARIO_NEW_TAIPEI_TOWN_LABEL_LAYER_ID = 'scenario-newtaipei-town-label-layer';
+  const SCENARIO_ASSET_VERSION = '20260817-6';
   const SCENARIO_OVERLAY_COORDINATES = [
     [121.0076414, 25.2409586],
     [121.7419290, 25.2409586],
@@ -536,6 +546,8 @@
       showCounty: false,
       showCityLabel: false,
       showStreetMap: false,
+      showTaipeiTowns: false,
+      showNewTaipeiTowns: false,
       overlays: createDefaultScenarioOverlays(id),
       overlayOpacity: 0.72,
       overlayOrder: 1,
@@ -617,6 +629,8 @@
       showCounty: !!raw?.showCounty,
       showCityLabel: !!raw?.showCityLabel,
       showStreetMap: !!raw?.showStreetMap,
+      showTaipeiTowns: raw?.showTaipeiTowns === undefined ? (raw?.showTowns === undefined ? !!raw?.showStreetMap : !!raw?.showTowns) : !!raw?.showTaipeiTowns,
+      showNewTaipeiTowns: raw?.showNewTaipeiTowns === undefined ? (raw?.showTowns === undefined ? !!raw?.showStreetMap : !!raw?.showTowns) : !!raw?.showNewTaipeiTowns,
       overlays: normalizeScenarioOverlays(raw?.overlays, id),
       overlayOpacity: normalizeScenarioOverlayOpacity(raw?.overlayOpacity),
       overlayOrder: normalizeScenarioOverlayOrder(raw?.overlayOrder),
@@ -861,6 +875,8 @@
     $('scenarioShowCounty').checked = !!scenario?.showCounty;
     $('scenarioShowCityLabel').checked = !!scenario?.showCityLabel;
     $('scenarioShowStreetMap').checked = !!scenario?.showStreetMap;
+    $('scenarioShowTaipeiTowns').checked = !!scenario?.showTaipeiTowns;
+    $('scenarioShowNewTaipeiTowns').checked = !!scenario?.showNewTaipeiTowns;
     $('scenarioOverlayOpacity').value = String(scenario?.overlayOpacity ?? 0.72);
     $('scenarioOverlayOpacityValue').value = Number(scenario?.overlayOpacity ?? 0.72).toFixed(2);
     $('scenarioOverlayOrder').value = String(scenario?.overlayOrder ?? 1);
@@ -972,6 +988,8 @@
     scenario.showCounty = $('scenarioShowCounty').checked;
     scenario.showCityLabel = $('scenarioShowCityLabel').checked;
     scenario.showStreetMap = $('scenarioShowStreetMap').checked;
+    scenario.showTaipeiTowns = $('scenarioShowTaipeiTowns').checked;
+    scenario.showNewTaipeiTowns = $('scenarioShowNewTaipeiTowns').checked;
     scenario.overlays = SCENARIO_OVERLAY_OPTIONS
       .filter(option => $(option.inputId).checked)
       .map(option => option.file);
@@ -1001,46 +1019,192 @@
     });
   }
   function addScenarioStreetLayer(){
+    if (!map.getSource(SCENARIO_TAIPEI_TOWN_SOURCE_ID)) {
+      map.addSource(SCENARIO_TAIPEI_TOWN_SOURCE_ID, {
+        type: 'geojson',
+        data: 'upload/taiwan-towns-63000.geojson'
+      });
+    }
+    if (!map.getSource(SCENARIO_NEW_TAIPEI_TOWN_SOURCE_ID)) {
+      map.addSource(SCENARIO_NEW_TAIPEI_TOWN_SOURCE_ID, {
+        type: 'geojson',
+        data: 'upload/taiwan-towns-65000.geojson'
+      });
+    }
     if (!map.getSource(SCENARIO_STREET_SOURCE_ID)) {
       map.addSource(SCENARIO_STREET_SOURCE_ID, {
         type: 'geojson',
-        data: `upload/Road.geojson?v=${SCENARIO_ASSET_VERSION}`
+        data: 'upload/Road.geojson'
       });
     }
-    const beforeId = SCENARIO_OVERLAY_OPTIONS[0]?.layerId;
+    const beforeId = getWindLayerAnchor();
+    if (!map.getLayer(SCENARIO_TAIPEI_TOWN_FILL_LAYER_ID)) {
+      try {
+        map.addLayer({
+          id: SCENARIO_TAIPEI_TOWN_FILL_LAYER_ID,
+          type: 'fill',
+          source: SCENARIO_TAIPEI_TOWN_SOURCE_ID,
+          layout: { visibility: 'none' },
+          paint: {
+            'fill-color': '#6b7280',
+            'fill-opacity': 0.12
+          }
+        }, beforeId);
+      } catch (err) {
+        console.error('Failed to add scenario taipei town fill layer:', err);
+      }
+    }
+    if (!map.getLayer(SCENARIO_TAIPEI_TOWN_LINE_LAYER_ID)) {
+      try {
+        map.addLayer({
+          id: SCENARIO_TAIPEI_TOWN_LINE_LAYER_ID,
+          type: 'line',
+          source: SCENARIO_TAIPEI_TOWN_SOURCE_ID,
+          layout: { visibility: 'none' },
+          paint: {
+            'line-color': '#ffffff',
+            'line-opacity': 1,
+            'line-width': ['interpolate', ['linear'], ['zoom'], 9, 0.7, 11, 1.1, 13, 1.5, 15, 2.1]
+          }
+        }, beforeId);
+      } catch (err) {
+        console.error('Failed to add scenario taipei town line layer:', err);
+      }
+    }
+    if (!map.getLayer(SCENARIO_TAIPEI_TOWN_LABEL_LAYER_ID)) {
+      try {
+        map.addLayer({
+          id: SCENARIO_TAIPEI_TOWN_LABEL_LAYER_ID,
+          type: 'symbol',
+          source: SCENARIO_TAIPEI_TOWN_SOURCE_ID,
+          layout: {
+            visibility: 'none',
+            'text-field': ['get', 'name'],
+            'text-size': ['interpolate', ['linear'], ['zoom'], 8, 11, 10, 13, 12, 15, 14, 18],
+            'text-font': ['Noto Sans Regular','Open Sans Regular','Arial Unicode MS Regular'],
+            'text-anchor': 'center',
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+            'text-max-width': 8
+          },
+          paint: {
+            'text-color': '#ffffff',
+            'text-halo-color': 'rgba(0,0,0,0.75)',
+            'text-halo-width': 1.8
+          }
+        }, beforeId);
+      } catch (err) {
+        console.error('Failed to add scenario taipei town label layer:', err);
+      }
+    }
+    if (!map.getLayer(SCENARIO_NEW_TAIPEI_TOWN_FILL_LAYER_ID)) {
+      try {
+        map.addLayer({
+          id: SCENARIO_NEW_TAIPEI_TOWN_FILL_LAYER_ID,
+          type: 'fill',
+          source: SCENARIO_NEW_TAIPEI_TOWN_SOURCE_ID,
+          layout: { visibility: 'none' },
+          paint: {
+            'fill-color': '#6b7280',
+            'fill-opacity': 0.12
+          }
+        }, beforeId);
+      } catch (err) {
+        console.error('Failed to add scenario new taipei town fill layer:', err);
+      }
+    }
+    if (!map.getLayer(SCENARIO_NEW_TAIPEI_TOWN_LINE_LAYER_ID)) {
+      try {
+        map.addLayer({
+          id: SCENARIO_NEW_TAIPEI_TOWN_LINE_LAYER_ID,
+          type: 'line',
+          source: SCENARIO_NEW_TAIPEI_TOWN_SOURCE_ID,
+          layout: { visibility: 'none' },
+          paint: {
+            'line-color': '#ffffff',
+            'line-opacity': 1,
+            'line-width': ['interpolate', ['linear'], ['zoom'], 9, 0.7, 11, 1.1, 13, 1.5, 15, 2.1]
+          }
+        }, beforeId);
+      } catch (err) {
+        console.error('Failed to add scenario new taipei town line layer:', err);
+      }
+    }
+    if (!map.getLayer(SCENARIO_NEW_TAIPEI_TOWN_LABEL_LAYER_ID)) {
+      try {
+        map.addLayer({
+          id: SCENARIO_NEW_TAIPEI_TOWN_LABEL_LAYER_ID,
+          type: 'symbol',
+          source: SCENARIO_NEW_TAIPEI_TOWN_SOURCE_ID,
+          layout: {
+            visibility: 'none',
+            'text-field': ['get', 'name'],
+            'text-size': ['interpolate', ['linear'], ['zoom'], 8, 11, 10, 13, 12, 15, 14, 18],
+            'text-font': ['Noto Sans Regular','Open Sans Regular','Arial Unicode MS Regular'],
+            'text-anchor': 'center',
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+            'text-max-width': 8
+          },
+          paint: {
+            'text-color': '#ffffff',
+            'text-halo-color': 'rgba(0,0,0,0.75)',
+            'text-halo-width': 1.8
+          }
+        }, beforeId);
+      } catch (err) {
+        console.error('Failed to add scenario new taipei town label layer:', err);
+      }
+    }
     if (!map.getLayer(SCENARIO_STREET_FILL_LAYER_ID)) {
-      map.addLayer({
-        id: SCENARIO_STREET_FILL_LAYER_ID,
-        type: 'fill',
-        source: SCENARIO_STREET_SOURCE_ID,
-        layout: { visibility: 'none' },
-        paint: {
-          'fill-color': '#111827',
-          'fill-opacity': 0.22
-        }
-      }, beforeId);
+      try {
+        map.addLayer({
+          id: SCENARIO_STREET_FILL_LAYER_ID,
+          type: 'fill',
+          source: SCENARIO_STREET_SOURCE_ID,
+          layout: { visibility: 'none' },
+          paint: {
+            'fill-color': '#d1d5db',
+            'fill-opacity': 0.34
+          }
+        }, beforeId);
+      } catch (err) {
+        console.error('Failed to add scenario road fill layer:', err);
+      }
     }
     if (!map.getLayer(SCENARIO_STREET_LINE_LAYER_ID)) {
-      map.addLayer({
-        id: SCENARIO_STREET_LINE_LAYER_ID,
-        type: 'line',
-        source: SCENARIO_STREET_SOURCE_ID,
-        layout: { visibility: 'none' },
-        paint: {
-          'line-color': '#020617',
-          'line-opacity': 0.45,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 9, 0.4, 11, 0.7, 13, 1.1, 15, 1.8]
-        }
-      }, beforeId);
+      try {
+        map.addLayer({
+          id: SCENARIO_STREET_LINE_LAYER_ID,
+          type: 'line',
+          source: SCENARIO_STREET_SOURCE_ID,
+          layout: { visibility: 'none' },
+          paint: {
+            'line-color': '#d1d5db',
+            'line-opacity': 0.7,
+            'line-width': ['interpolate', ['linear'], ['zoom'], 9, 0.22, 11, 0.4, 13, 0.68, 15, 1.05]
+          }
+        }, beforeId);
+      } catch (err) {
+        console.error('Failed to add scenario road line layer:', err);
+      }
     }
   }
   function applyScenarioStreetLayer(scenario){
-    const visible = !!scenario?.showStreetMap;
+    const roadVisible = !!scenario?.showStreetMap;
+    const taipeiTownVisible = !!scenario?.showTaipeiTowns;
+    const newTaipeiTownVisible = !!scenario?.showNewTaipeiTowns;
+    if (map.getLayer(SCENARIO_TAIPEI_TOWN_FILL_LAYER_ID)) map.setLayoutProperty(SCENARIO_TAIPEI_TOWN_FILL_LAYER_ID, 'visibility', taipeiTownVisible ? 'visible' : 'none');
+    if (map.getLayer(SCENARIO_TAIPEI_TOWN_LINE_LAYER_ID)) map.setLayoutProperty(SCENARIO_TAIPEI_TOWN_LINE_LAYER_ID, 'visibility', taipeiTownVisible ? 'visible' : 'none');
+    if (map.getLayer(SCENARIO_TAIPEI_TOWN_LABEL_LAYER_ID)) map.setLayoutProperty(SCENARIO_TAIPEI_TOWN_LABEL_LAYER_ID, 'visibility', taipeiTownVisible ? 'visible' : 'none');
+    if (map.getLayer(SCENARIO_NEW_TAIPEI_TOWN_FILL_LAYER_ID)) map.setLayoutProperty(SCENARIO_NEW_TAIPEI_TOWN_FILL_LAYER_ID, 'visibility', newTaipeiTownVisible ? 'visible' : 'none');
+    if (map.getLayer(SCENARIO_NEW_TAIPEI_TOWN_LINE_LAYER_ID)) map.setLayoutProperty(SCENARIO_NEW_TAIPEI_TOWN_LINE_LAYER_ID, 'visibility', newTaipeiTownVisible ? 'visible' : 'none');
+    if (map.getLayer(SCENARIO_NEW_TAIPEI_TOWN_LABEL_LAYER_ID)) map.setLayoutProperty(SCENARIO_NEW_TAIPEI_TOWN_LABEL_LAYER_ID, 'visibility', newTaipeiTownVisible ? 'visible' : 'none');
     if (map.getLayer(SCENARIO_STREET_FILL_LAYER_ID)) {
-      map.setLayoutProperty(SCENARIO_STREET_FILL_LAYER_ID, 'visibility', visible ? 'visible' : 'none');
+      map.setLayoutProperty(SCENARIO_STREET_FILL_LAYER_ID, 'visibility', roadVisible ? 'visible' : 'none');
     }
     if (map.getLayer(SCENARIO_STREET_LINE_LAYER_ID)) {
-      map.setLayoutProperty(SCENARIO_STREET_LINE_LAYER_ID, 'visibility', visible ? 'visible' : 'none');
+      map.setLayoutProperty(SCENARIO_STREET_LINE_LAYER_ID, 'visibility', roadVisible ? 'visible' : 'none');
     }
   }
   function getScenarioOverlayBeforeId(order = 1){
@@ -1058,11 +1222,15 @@
     const opacity = normalizeScenarioOverlayOpacity(scenario?.overlayOpacity);
     const beforeId = getScenarioOverlayBeforeId(scenario?.overlayOrder ?? 1);
     const windBeforeId = getWindLayerAnchor();
+    if (map.getLayer(SCENARIO_TAIPEI_TOWN_FILL_LAYER_ID)) map.setPaintProperty(SCENARIO_TAIPEI_TOWN_FILL_LAYER_ID, 'fill-opacity', 0.12);
+    if (map.getLayer(SCENARIO_TAIPEI_TOWN_LINE_LAYER_ID)) map.setPaintProperty(SCENARIO_TAIPEI_TOWN_LINE_LAYER_ID, 'line-opacity', 1);
+    if (map.getLayer(SCENARIO_NEW_TAIPEI_TOWN_FILL_LAYER_ID)) map.setPaintProperty(SCENARIO_NEW_TAIPEI_TOWN_FILL_LAYER_ID, 'fill-opacity', 0.12);
+    if (map.getLayer(SCENARIO_NEW_TAIPEI_TOWN_LINE_LAYER_ID)) map.setPaintProperty(SCENARIO_NEW_TAIPEI_TOWN_LINE_LAYER_ID, 'line-opacity', 1);
     if (map.getLayer(SCENARIO_STREET_FILL_LAYER_ID)) {
-      map.setPaintProperty(SCENARIO_STREET_FILL_LAYER_ID, 'fill-opacity', 0.22);
+      map.setPaintProperty(SCENARIO_STREET_FILL_LAYER_ID, 'fill-opacity', 0.34);
     }
     if (map.getLayer(SCENARIO_STREET_LINE_LAYER_ID)) {
-      map.setPaintProperty(SCENARIO_STREET_LINE_LAYER_ID, 'line-opacity', 0.45);
+      map.setPaintProperty(SCENARIO_STREET_LINE_LAYER_ID, 'line-opacity', 0.7);
     }
     SCENARIO_OVERLAY_OPTIONS.forEach(option => {
       if (!map.getLayer(option.layerId)) return;
@@ -1089,6 +1257,12 @@
       if (!map.getLayer(option.layerId) || !map.getLayer(SCENARIO_STREET_FILL_LAYER_ID)) return;
       try {
         map.moveLayer(option.layerId, SCENARIO_STREET_FILL_LAYER_ID);
+      } catch (_) {}
+    });
+    [SCENARIO_TAIPEI_TOWN_FILL_LAYER_ID, SCENARIO_TAIPEI_TOWN_LINE_LAYER_ID, SCENARIO_TAIPEI_TOWN_LABEL_LAYER_ID, SCENARIO_NEW_TAIPEI_TOWN_FILL_LAYER_ID, SCENARIO_NEW_TAIPEI_TOWN_LINE_LAYER_ID, SCENARIO_NEW_TAIPEI_TOWN_LABEL_LAYER_ID].forEach(layerId => {
+      if (!map.getLayer(layerId) || !map.getLayer(SCENARIO_STREET_FILL_LAYER_ID)) return;
+      try {
+        map.moveLayer(layerId, SCENARIO_STREET_FILL_LAYER_ID);
       } catch (_) {}
     });
   }
@@ -1772,7 +1946,7 @@
       btn.addEventListener('click', () => switchEditingScenario(btn.dataset.scenarioTab));
     });
 
-    ['scenarioName','scenarioSeason','scenarioTod','scenarioPalette','scenarioShowCounty','scenarioShowCityLabel','scenarioShowStreetMap','scenarioOverlay2605261400','scenarioOverlay2605260200','scenarioOverlayOpacity','scenarioOverlayOrder','scenarioLng','scenarioLat','scenarioZoom','scenarioPitch','scenarioBearing'].forEach(id => {
+    ['scenarioName','scenarioSeason','scenarioTod','scenarioPalette','scenarioShowCounty','scenarioShowCityLabel','scenarioShowStreetMap','scenarioShowTaipeiTowns','scenarioShowNewTaipeiTowns','scenarioOverlay2605261400','scenarioOverlay2605260200','scenarioOverlayOpacity','scenarioOverlayOrder','scenarioLng','scenarioLat','scenarioZoom','scenarioPitch','scenarioBearing'].forEach(id => {
       $(id).addEventListener('input', syncEditingScenarioFromInputs);
       $(id).addEventListener('change', syncEditingScenarioFromInputs);
     });
@@ -1973,8 +2147,8 @@
     addAllWindLayers();
     await addTerrainOverlay();
     await addAermodTerrainOverlay();
-    addScenarioStreetLayer();
     addScenarioOverlayLayers();
+    addScenarioStreetLayer();
     await addCountyBoundaries(); // ← 新增：載入縣市邊界（預設隱藏）
     await addCityLabels();    // 生成以 CITY_PRESETS 座標為準的縣市名稱標籤
     addPinLayers();
@@ -1992,6 +2166,7 @@
     showOnly(currentKey());
     refreshScenarioButtonLabels();
     refreshScenarioSourcesForScenario(getScenario(activeScenarioId));
+    applyScenarioDisplayOptions(getScenario(activeScenarioId));
 
 });
 
