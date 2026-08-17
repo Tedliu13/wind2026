@@ -1001,11 +1001,9 @@
   function addScenarioStreetLayer(){
     if (!map.getSource(SCENARIO_STREET_SOURCE_ID)) {
       map.addSource(SCENARIO_STREET_SOURCE_ID, {
-        type: 'raster',
-        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-        tileSize: 256,
-        bounds: SCENARIO_OVERLAY_BOUNDS,
-        attribution: '© OpenStreetMap contributors'
+        type: 'image',
+        url: 'upload/osm_major_roads_overlay.png',
+        coordinates: SCENARIO_OVERLAY_COORDINATES
       });
     }
     const beforeId = SCENARIO_OVERLAY_OPTIONS[0]?.layerId;
@@ -1016,11 +1014,7 @@
         source: SCENARIO_STREET_SOURCE_ID,
         layout: { visibility: 'none' },
         paint: {
-          'raster-opacity': 0.9,
-          'raster-saturation': -0.2,
-          'raster-contrast': 0.15,
-          'raster-brightness-min': 0.1,
-          'raster-brightness-max': 0.95,
+          'raster-opacity': 1,
           'raster-resampling': 'linear'
         }
       }, beforeId);
@@ -1030,9 +1024,6 @@
     if (!map.getLayer(SCENARIO_STREET_LAYER_ID)) return;
     const visible = !!scenario?.showStreetMap;
     map.setLayoutProperty(SCENARIO_STREET_LAYER_ID, 'visibility', visible ? 'visible' : 'none');
-    try {
-      map.moveLayer(SCENARIO_STREET_LAYER_ID, SCENARIO_OVERLAY_OPTIONS[0]?.layerId);
-    } catch (_) {}
   }
   function getScenarioOverlayBeforeId(order = 1){
     const normalized = normalizeScenarioOverlayOrder(order);
@@ -1044,6 +1035,10 @@
   function applyScenarioOverlayStyle(scenario){
     const opacity = normalizeScenarioOverlayOpacity(scenario?.overlayOpacity);
     const beforeId = getScenarioOverlayBeforeId(scenario?.overlayOrder ?? 1);
+    if (map.getLayer(SCENARIO_STREET_LAYER_ID)) {
+      map.setPaintProperty(SCENARIO_STREET_LAYER_ID, 'raster-opacity', 1);
+      map.setPaintProperty(SCENARIO_STREET_LAYER_ID, 'raster-resampling', 'nearest');
+    }
     SCENARIO_OVERLAY_OPTIONS.forEach(option => {
       if (!map.getLayer(option.layerId)) return;
       map.setPaintProperty(option.layerId, 'raster-opacity', opacity);
@@ -1055,6 +1050,11 @@
         map.moveLayer(option.layerId, beforeId);
       } catch (_) {}
     });
+    if (map.getLayer(SCENARIO_STREET_LAYER_ID)) {
+      try {
+        map.moveLayer(SCENARIO_STREET_LAYER_ID, beforeId);
+      } catch (_) {}
+    }
   }
   function addScenarioOverlayLayers(){
     const beforeId = map.getLayer('wind_JJA_day') ? 'wind_JJA_day' : undefined;
