@@ -160,6 +160,13 @@
     }
     .storybar .story-btn:hover{background:#fff}
     .storybar .story-btn.active{background:#111827;color:#fff}
+    .wind-canvas{
+      position:absolute;
+      inset:0;
+      z-index:4;
+      pointer-events:none;
+      display:none;
+    }
     @media (max-width: 900px){
       .modal-grid{grid-template-columns:1fr}
       .list-item-grid.pin,.list-item-grid.arrow,.field-grid{grid-template-columns:1fr}
@@ -375,6 +382,7 @@
           <label><input id="scenarioOverlay2605261400" type="checkbox"> 2605261400.tif</label>
           <label><input id="scenarioOverlay2605260200" type="checkbox"> 2605260200.tif</label>
           <label><input id="scenarioShowStreetMap" type="checkbox"> 顯示道路圖</label>
+          <label><input id="scenarioShow3DBuildings" type="checkbox"> 顯示3D建物</label>
           <label><input id="scenarioShowTaipeiTowns" type="checkbox"> 顯示台北市鄉鎮區</label>
           <label><input id="scenarioShowNewTaipeiTowns" type="checkbox"> 顯示新北市鄉鎮區</label>
         </div>
@@ -482,6 +490,7 @@
   const SCENARIO_STREET_SOURCE_ID = 'scenario-road-geojson';
   const SCENARIO_STREET_FILL_LAYER_ID = 'scenario-road-fill-layer';
   const SCENARIO_STREET_LINE_LAYER_ID = 'scenario-road-line-layer';
+  const SCENARIO_3D_BUILDING_LAYER_ID = 'scenario-3d-buildings';
   const SCENARIO_TAIPEI_TOWN_SOURCE_ID = 'scenario-taipei-town-geojson';
   const SCENARIO_TAIPEI_TOWN_FILL_LAYER_ID = 'scenario-taipei-town-fill-layer';
   const SCENARIO_TAIPEI_TOWN_LINE_LAYER_ID = 'scenario-taipei-town-line-layer';
@@ -510,6 +519,34 @@
   let scenarioMapInteractionsBound = false;
   let arrowImageKind = 'canvas';
   let scenarioEditSession = null;
+  const WIND_NATIVE = {};
+  const WIND_NATIVE_FILES = {
+    DJF_day: 'wind_DJF_day_native.json',
+    DJF_night: 'wind_DJF_night_native.json',
+    JJA_day: 'wind_JJA_day_native.json',
+    JJA_night: 'wind_JJA_night_native.json'
+  };
+  const HYBRID_PARTICLE_ZOOM = 15;
+  const HYBRID_CANVAS_DEFAULTS = {
+    countScale: 0.3,
+    speedScale: 0.06,
+    lineScale: 0.8,
+    smoothing: 0.88,
+    ignoreTerrainFlow: false
+  };
+  let windCanvas = null;
+  let windCtx = null;
+  let windCanvasWidth = 0;
+  let windCanvasHeight = 0;
+  let windDpr = 1;
+  let windAnimFrame = 0;
+  let windLastFrameTs = 0;
+  let windParticles = [];
+  let windReferenceAreaKm2 = null;
+  let windReferenceZoom = null;
+  let hybridWindEnabled = false;
+  let windNativeReadyPromise = null;
+  let suppressHybridWindUpdates = 0;
 
   function createId(prefix){
     return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -546,6 +583,7 @@
       showCounty: false,
       showCityLabel: false,
       showStreetMap: false,
+      show3DBuildings: false,
       showTaipeiTowns: false,
       showNewTaipeiTowns: false,
       overlays: createDefaultScenarioOverlays(id),
@@ -629,6 +667,7 @@
       showCounty: !!raw?.showCounty,
       showCityLabel: !!raw?.showCityLabel,
       showStreetMap: !!raw?.showStreetMap,
+      show3DBuildings: !!raw?.show3DBuildings,
       showTaipeiTowns: raw?.showTaipeiTowns === undefined ? (raw?.showTowns === undefined ? !!raw?.showStreetMap : !!raw?.showTowns) : !!raw?.showTaipeiTowns,
       showNewTaipeiTowns: raw?.showNewTaipeiTowns === undefined ? (raw?.showTowns === undefined ? !!raw?.showStreetMap : !!raw?.showTowns) : !!raw?.showNewTaipeiTowns,
       overlays: normalizeScenarioOverlays(raw?.overlays, id),
@@ -829,7 +868,11 @@
     center:[121,23.6], zoom:8.5, pitch:60, bearing:-10, antialias:true
   });
   map.setMinZoom(8);
-  map.setMaxZoom(13);
+  map.setMaxZoom(17);
+  map.on('resize', ()=>{
+    resizeWindCanvas();
+    if (hybridWindEnabled) restartWindField();
+  });
   const $ = id => document.getElementById(id);
   const say = t => { $('status').textContent = t; console.log(t); };
   const scenarioTabButtons = () => Array.from(document.querySelectorAll('[data-scenario-tab]'));
@@ -875,6 +918,7 @@
     $('scenarioShowCounty').checked = !!scenario?.showCounty;
     $('scenarioShowCityLabel').checked = !!scenario?.showCityLabel;
     $('scenarioShowStreetMap').checked = !!scenario?.showStreetMap;
+    $('scenarioShow3DBuildings').checked = !!scenario?.show3DBuildings;
     $('scenarioShowTaipeiTowns').checked = !!scenario?.showTaipeiTowns;
     $('scenarioShowNewTaipeiTowns').checked = !!scenario?.showNewTaipeiTowns;
     $('scenarioOverlayOpacity').value = String(scenario?.overlayOpacity ?? 0.72);
@@ -988,6 +1032,7 @@
     scenario.showCounty = $('scenarioShowCounty').checked;
     scenario.showCityLabel = $('scenarioShowCityLabel').checked;
     scenario.showStreetMap = $('scenarioShowStreetMap').checked;
+    scenario.show3DBuildings = $('scenarioShow3DBuildings').checked;
     scenario.showTaipeiTowns = $('scenarioShowTaipeiTowns').checked;
     scenario.showNewTaipeiTowns = $('scenarioShowNewTaipeiTowns').checked;
     scenario.overlays = SCENARIO_OVERLAY_OPTIONS
@@ -1190,10 +1235,43 @@
       }
     }
   }
+  function addScenario3DBuildingLayer(){
+    if (map.getLayer(SCENARIO_3D_BUILDING_LAYER_ID)) return;
+    if (!map.getSource('composite')) return;
+    const beforeId = getWindLayerAnchor();
+    try {
+      map.addLayer({
+        id: SCENARIO_3D_BUILDING_LAYER_ID,
+        source: 'composite',
+        'source-layer': 'building',
+        type: 'fill-extrusion',
+        minzoom: 13,
+        layout: { visibility: 'none' },
+        filter: ['==', ['get', 'extrude'], 'true'],
+        paint: {
+          'fill-extrusion-color': [
+            'interpolate', ['linear'], ['get', 'height'],
+            0, '#bfc5cf',
+            60, '#cfd5dd',
+            150, '#e5e7eb'
+          ],
+          'fill-extrusion-opacity': 0.72,
+          'fill-extrusion-height': ['coalesce', ['to-number', ['get', 'height']], 0],
+          'fill-extrusion-base': ['coalesce', ['to-number', ['get', 'min_height']], 0]
+        }
+      }, beforeId);
+    } catch (err) {
+      console.error('Failed to add scenario 3D building layer:', err);
+    }
+  }
   function applyScenarioStreetLayer(scenario){
     const roadVisible = !!scenario?.showStreetMap;
+    const buildingVisible = !!scenario?.show3DBuildings;
     const taipeiTownVisible = !!scenario?.showTaipeiTowns;
     const newTaipeiTownVisible = !!scenario?.showNewTaipeiTowns;
+    if (map.getLayer(SCENARIO_3D_BUILDING_LAYER_ID)) {
+      map.setLayoutProperty(SCENARIO_3D_BUILDING_LAYER_ID, 'visibility', buildingVisible ? 'visible' : 'none');
+    }
     if (map.getLayer(SCENARIO_TAIPEI_TOWN_FILL_LAYER_ID)) map.setLayoutProperty(SCENARIO_TAIPEI_TOWN_FILL_LAYER_ID, 'visibility', taipeiTownVisible ? 'visible' : 'none');
     if (map.getLayer(SCENARIO_TAIPEI_TOWN_LINE_LAYER_ID)) map.setLayoutProperty(SCENARIO_TAIPEI_TOWN_LINE_LAYER_ID, 'visibility', taipeiTownVisible ? 'visible' : 'none');
     if (map.getLayer(SCENARIO_TAIPEI_TOWN_LABEL_LAYER_ID)) map.setLayoutProperty(SCENARIO_TAIPEI_TOWN_LABEL_LAYER_ID, 'visibility', taipeiTownVisible ? 'visible' : 'none');
@@ -1222,6 +1300,9 @@
     const opacity = normalizeScenarioOverlayOpacity(scenario?.overlayOpacity);
     const beforeId = getScenarioOverlayBeforeId(scenario?.overlayOrder ?? 1);
     const windBeforeId = getWindLayerAnchor();
+    if (map.getLayer(SCENARIO_3D_BUILDING_LAYER_ID)) {
+      map.setPaintProperty(SCENARIO_3D_BUILDING_LAYER_ID, 'fill-extrusion-opacity', 0.72);
+    }
     if (map.getLayer(SCENARIO_TAIPEI_TOWN_FILL_LAYER_ID)) map.setPaintProperty(SCENARIO_TAIPEI_TOWN_FILL_LAYER_ID, 'fill-opacity', 0.12);
     if (map.getLayer(SCENARIO_TAIPEI_TOWN_LINE_LAYER_ID)) map.setPaintProperty(SCENARIO_TAIPEI_TOWN_LINE_LAYER_ID, 'line-opacity', 1);
     if (map.getLayer(SCENARIO_NEW_TAIPEI_TOWN_FILL_LAYER_ID)) map.setPaintProperty(SCENARIO_NEW_TAIPEI_TOWN_FILL_LAYER_ID, 'fill-opacity', 0.12);
@@ -1251,6 +1332,11 @@
     if (map.getLayer(SCENARIO_STREET_LINE_LAYER_ID)) {
       try {
         map.moveLayer(SCENARIO_STREET_LINE_LAYER_ID, windBeforeId);
+      } catch (_) {}
+    }
+    if (map.getLayer(SCENARIO_3D_BUILDING_LAYER_ID)) {
+      try {
+        map.moveLayer(SCENARIO_3D_BUILDING_LAYER_ID, windBeforeId);
       } catch (_) {}
     }
     SCENARIO_OVERLAY_OPTIONS.forEach(option => {
@@ -1352,7 +1438,14 @@
       refreshScenarioSourcesForScenario(scenario);
     }
     if (shouldFly) {
-      runWithTerrain([scenario.camera], [FLY_DUR], { lockPitch: true }).then(() => {
+      const currentZoom = map.getZoom();
+      const targetZoom = scenario.camera?.zoom ?? currentZoom;
+      const zoomDiff = Math.abs(currentZoom - targetZoom);
+      const highZoomDirectFlight = targetZoom > HYBRID_PARTICLE_ZOOM && zoomDiff >= 2;
+      const flightPromise = highZoomDirectFlight
+        ? flyScenarioCamera(scenario.camera)
+        : runWithTerrain([scenario.camera], [FLY_DUR], { lockPitch: true });
+      flightPromise.then(() => {
         scenario.pins.forEach(pin => animateScenarioPinOpacity(pin, 0, 1000, scenario));
         scenario.arrows.forEach(arrow => animateScenarioArrowOpacity(arrow, 0, 1000, scenario));
       });
@@ -1946,7 +2039,7 @@
       btn.addEventListener('click', () => switchEditingScenario(btn.dataset.scenarioTab));
     });
 
-    ['scenarioName','scenarioSeason','scenarioTod','scenarioPalette','scenarioShowCounty','scenarioShowCityLabel','scenarioShowStreetMap','scenarioShowTaipeiTowns','scenarioShowNewTaipeiTowns','scenarioOverlay2605261400','scenarioOverlay2605260200','scenarioOverlayOpacity','scenarioOverlayOrder','scenarioLng','scenarioLat','scenarioZoom','scenarioPitch','scenarioBearing'].forEach(id => {
+    ['scenarioName','scenarioSeason','scenarioTod','scenarioPalette','scenarioShowCounty','scenarioShowCityLabel','scenarioShowStreetMap','scenarioShow3DBuildings','scenarioShowTaipeiTowns','scenarioShowNewTaipeiTowns','scenarioOverlay2605261400','scenarioOverlay2605260200','scenarioOverlayOpacity','scenarioOverlayOrder','scenarioLng','scenarioLat','scenarioZoom','scenarioPitch','scenarioBearing'].forEach(id => {
       $(id).addEventListener('input', syncEditingScenarioFromInputs);
       $(id).addEventListener('change', syncEditingScenarioFromInputs);
     });
@@ -2064,6 +2157,417 @@
       if (!map.getLayer('sky')) map.addLayer({ id:'sky', type:'sky', paint:{ 'sky-type':'atmosphere' }});
     }
   }
+  function getCurrentTerrainSpec(){
+    const terrain = map.getTerrain?.();
+    if (!terrain?.source) return null;
+    return {
+      source: terrain.source,
+      exaggeration: terrain.exaggeration ?? 1
+    };
+  }
+
+  function lerp(a, b, t) {
+    return a + (b - a) * t;
+  }
+
+  function hexToRgb(hex) {
+    const raw = hex.replace('#', '');
+    const norm = raw.length === 3 ? raw.split('').map(ch => ch + ch).join('') : raw;
+    const int = parseInt(norm, 16);
+    return { r: (int >> 16) & 255, g: (int >> 8) & 255, b: int & 255 };
+  }
+
+  function colorForSpeed(speed, max, kind, alpha = 1) {
+    const stops = paletteStops(kind, max);
+    if (!stops.length) return `rgba(255,255,255,${alpha})`;
+    if (speed <= stops[0][0]) {
+      const c = hexToRgb(stops[0][1]);
+      return `rgba(${c.r},${c.g},${c.b},${alpha})`;
+    }
+    for (let i = 1; i < stops.length; i++) {
+      const [v1, c1] = stops[i];
+      const [v0, c0] = stops[i - 1];
+      if (speed <= v1) {
+        const t = v1 === v0 ? 0 : (speed - v0) / (v1 - v0);
+        const a = hexToRgb(c0);
+        const b = hexToRgb(c1);
+        return `rgba(${Math.round(lerp(a.r, b.r, t))},${Math.round(lerp(a.g, b.g, t))},${Math.round(lerp(a.b, b.b, t))},${alpha})`;
+      }
+    }
+    const c = hexToRgb(stops[stops.length - 1][1]);
+    return `rgba(${c.r},${c.g},${c.b},${alpha})`;
+  }
+
+  function ensureWindCanvas() {
+    if (windCanvas && windCanvas.isConnected) return;
+    windCanvas = document.createElement('canvas');
+    windCanvas.className = 'wind-canvas';
+    map.getContainer().appendChild(windCanvas);
+    windCtx = windCanvas.getContext('2d');
+    resizeWindCanvas();
+  }
+
+  function resizeWindCanvas() {
+    if (!windCanvas || !windCtx) return;
+    const rect = map.getContainer().getBoundingClientRect();
+    windDpr = Math.max(1, window.devicePixelRatio || 1);
+    windCanvasWidth = Math.max(1, Math.round(rect.width));
+    windCanvasHeight = Math.max(1, Math.round(rect.height));
+    windCanvas.width = Math.round(windCanvasWidth * windDpr);
+    windCanvas.height = Math.round(windCanvasHeight * windDpr);
+    windCanvas.style.width = `${windCanvasWidth}px`;
+    windCanvas.style.height = `${windCanvasHeight}px`;
+    windCtx.setTransform(windDpr, 0, 0, windDpr, 0, 0);
+    clearWindCanvas();
+  }
+
+  function clearWindCanvas() {
+    if (!windCtx) return;
+    windCtx.clearRect(0, 0, windCanvasWidth, windCanvasHeight);
+  }
+
+  function randomIn(min, max) {
+    return min + Math.random() * (max - min);
+  }
+
+  function boundsAreaKm2(bounds = map.getBounds()) {
+    const north = bounds.getNorth();
+    const south = bounds.getSouth();
+    const east = bounds.getEast();
+    const west = bounds.getWest();
+    const meanLatRad = ((north + south) * 0.5) * Math.PI / 180;
+    const widthKm = Math.abs(east - west) * 111.32 * Math.max(0.2, Math.cos(meanLatRad));
+    const heightKm = Math.abs(north - south) * 111.32;
+    return Math.max(1, widthKm * heightKm);
+  }
+
+  function currentCanvasWindConfig() {
+    return {
+      count: Math.max(1, Math.round(+$('pCount').value * HYBRID_CANVAS_DEFAULTS.countScale)),
+      speedFactor: parseFloat($('pSpeed').value) * HYBRID_CANVAS_DEFAULTS.speedScale,
+      fade: parseFloat($('pFade').value),
+      maxSpeed: +$('pMax').value,
+      reset: parseFloat($('pReset').value),
+      lineScale: HYBRID_CANVAS_DEFAULTS.lineScale,
+      smoothing: HYBRID_CANVAS_DEFAULTS.smoothing,
+      ignoreTerrainFlow: HYBRID_CANVAS_DEFAULTS.ignoreTerrainFlow,
+      palette: $('pPalette').value
+    };
+  }
+
+  async function loadNativeWindGrid(url) {
+    const raw = await fetch(url).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
+      return r.json();
+    });
+    const arr = Array.isArray(raw) ? raw : (raw.data || raw);
+    const uRec = arr.find(r => r?.header?.parameterNumber === 2);
+    const vRec = arr.find(r => r?.header?.parameterNumber === 3);
+    if (!uRec || !vRec) throw new Error('找不到 U/V 分量記錄');
+    const { nx, ny, lo1, la1, dx, dy } = uRec.header;
+    const U = uRec.data;
+    const V = vRec.data;
+    if (!U || !V || U.length !== nx * ny || V.length !== nx * ny) {
+      throw new Error(`U/V 長度與 nx*ny 不符 (nx=${nx}, ny=${ny}, U=${U?.length}, V=${V?.length})`);
+    }
+    return { nx, ny, lo1, la1, dx, dy, U, V };
+  }
+
+  function ensureNativeWindReady() {
+    if (!windNativeReadyPromise) {
+      windNativeReadyPromise = Promise.all(
+        Object.entries(WIND_NATIVE_FILES).map(async ([key, url]) => {
+          if (!WIND_NATIVE[key]) WIND_NATIVE[key] = await loadNativeWindGrid(url);
+        })
+      );
+    }
+    return windNativeReadyPromise;
+  }
+
+  function sampleWindAt(key, lng, lat) {
+    const g = WIND_NATIVE[key];
+    if (!g) return null;
+    const x = (lng - g.lo1) / g.dx - 0.5;
+    const y = (g.la1 - lat) / g.dy - 0.5;
+    const i = Math.floor(x);
+    const j = Math.floor(y);
+    if (i < 0 || j < 0 || i >= g.nx - 1 || j >= g.ny - 1) return null;
+    const fx = x - i;
+    const fy = y - j;
+    const idx = (ii, jj) => jj * g.nx + ii;
+    const u00 = g.U[idx(i, j)];
+    const u10 = g.U[idx(i + 1, j)];
+    const u01 = g.U[idx(i, j + 1)];
+    const u11 = g.U[idx(i + 1, j + 1)];
+    const v00 = g.V[idx(i, j)];
+    const v10 = g.V[idx(i + 1, j)];
+    const v01 = g.V[idx(i, j + 1)];
+    const v11 = g.V[idx(i + 1, j + 1)];
+    const u = lerp(lerp(u00, u10, fx), lerp(u01, u11, fx), fy);
+    const v = lerp(lerp(v00, v10, fx), lerp(v01, v11, fx), fy);
+    const speed = Math.hypot(u, v);
+    return { u, v, speed };
+  }
+
+  function buildStreamPath(seedLng, seedLat, cfg) {
+    const path = [];
+    let lng = seedLng;
+    let lat = seedLat;
+    const stepSeconds = 32 + cfg.speedFactor * 62;
+    const segments = Math.max(24, Math.round(22 + cfg.speedFactor * 30 + (cfg.fade - 0.8) * 44));
+    const directionSmoothing = cfg.ignoreTerrainFlow ? Math.max(cfg.smoothing, 0.96) : cfg.smoothing;
+    let prevU = null;
+    let prevV = null;
+    let anchorU = null;
+    let anchorV = null;
+
+    for (let i = 0; i < segments; i++) {
+      const sample = sampleWindAt(currentKey(), lng, lat);
+      if (!sample) break;
+      const pt = map.project([lng, lat]);
+      if (pt.x < -120 || pt.y < -120 || pt.x > windCanvasWidth + 120 || pt.y > windCanvasHeight + 120) break;
+      path.push({ x: pt.x, y: pt.y, speed: sample.speed, lng, lat });
+
+      const latRad = lat * Math.PI / 180;
+      const cosLat = Math.max(0.2, Math.cos(latRad));
+      const midLng = lng + (sample.u * stepSeconds * 0.5) / (111320 * cosLat);
+      const midLat = lat + (sample.v * stepSeconds * 0.5) / 111320;
+      const midSample = sampleWindAt(currentKey(), midLng, midLat);
+      if (!midSample) break;
+
+      if (anchorU == null || anchorV == null) {
+        anchorU = midSample.u;
+        anchorV = midSample.v;
+      }
+      const baseU = cfg.ignoreTerrainFlow ? lerp(midSample.u, anchorU, 0.96) : midSample.u;
+      const baseV = cfg.ignoreTerrainFlow ? lerp(midSample.v, anchorV, 0.96) : midSample.v;
+      const smoothU = prevU == null ? baseU : lerp(baseU, prevU, directionSmoothing);
+      const smoothV = prevV == null ? baseV : lerp(baseV, prevV, directionSmoothing);
+      prevU = smoothU;
+      prevV = smoothV;
+
+      const midCosLat = Math.max(0.2, Math.cos(midLat * Math.PI / 180));
+      lng = lng + (smoothU * stepSeconds) / (111320 * midCosLat);
+      lat = lat + (smoothV * stepSeconds) / 111320;
+    }
+    return path;
+  }
+
+  function resetParticle(particle, cfg = currentCanvasWindConfig()) {
+    const bounds = map.getBounds();
+    for (let tries = 0; tries < 60; tries++) {
+      const lng = randomIn(bounds.getWest(), bounds.getEast());
+      const lat = randomIn(bounds.getSouth(), bounds.getNorth());
+      if (!sampleWindAt(currentKey(), lng, lat)) continue;
+      const path = buildStreamPath(lng, lat, cfg);
+      if (path.length < 6) continue;
+      particle.path = path;
+      particle.progress = Math.random() * Math.min(2, path.length - 1);
+      particle.age = 0;
+      particle.maxAge = 220 + Math.random() * 260;
+      particle.state = 'active';
+      particle.fadeAge = 0;
+      particle.fadeMaxAge = 26 + Math.random() * 28;
+      return particle;
+    }
+    particle.path = [];
+    particle.progress = 0;
+    particle.age = 0;
+    particle.maxAge = 1;
+    particle.state = 'active';
+    particle.fadeAge = 0;
+    particle.fadeMaxAge = 1;
+    return particle;
+  }
+
+  function beginFadeOut(particle) {
+    particle.state = 'fading';
+    particle.fadeAge = 0;
+    particle.fadeMaxAge = 26 + Math.random() * 28;
+  }
+
+  function syncParticlePool(cfg = currentCanvasWindConfig()) {
+    if (!windReferenceAreaKm2) windReferenceAreaKm2 = boundsAreaKm2();
+    const currentAreaKm2 = boundsAreaKm2();
+    const areaRatio = currentAreaKm2 / windReferenceAreaKm2;
+    const scaledTarget = Math.round(cfg.count * Math.pow(areaRatio, 0.62));
+    const minTarget = Math.max(700, Math.round(cfg.count * 0.38));
+    const maxTarget = Math.min(9000, Math.round(cfg.count * 2.0));
+    const target = Math.max(minTarget, Math.min(maxTarget, scaledTarget));
+    while (windParticles.length < target) windParticles.push(resetParticle({}, cfg));
+    if (windParticles.length > target) windParticles.length = target;
+  }
+
+  function restartWindField() {
+    if (!hybridWindEnabled) return;
+    const cfg = currentCanvasWindConfig();
+    syncParticlePool(cfg);
+    clearWindCanvas();
+    windParticles.forEach(p => resetParticle(p, cfg));
+  }
+
+  function stepWindCanvas(ts) {
+    if (!hybridWindEnabled || !windCtx) return;
+    const dt = windLastFrameTs ? Math.min(0.05, Math.max(0.008, (ts - windLastFrameTs) / 1000)) : 1 / 60;
+    windLastFrameTs = ts;
+    const cfg = currentCanvasWindConfig();
+    syncParticlePool(cfg);
+
+    if (map.isMoving()) {
+      clearWindCanvas();
+    } else {
+      const retention = Math.min(0.97, Math.max(0.82, cfg.fade - 0.015));
+      windCtx.save();
+      windCtx.globalCompositeOperation = 'destination-in';
+      windCtx.fillStyle = `rgba(0,0,0,${retention})`;
+      windCtx.fillRect(0, 0, windCanvasWidth, windCanvasHeight);
+      windCtx.restore();
+    }
+
+    const resetChance = 0.00025 + cfg.reset * 0.0009;
+    const zoomNow = map.getZoom();
+    const zoomDelta = zoomNow - (windReferenceZoom ?? zoomNow);
+    const zoomLengthScale = Math.pow(2, -zoomDelta * 0.65);
+    const zoomWidthScale = Math.pow(2, zoomDelta * 0.16);
+    const targetTrailPixels = (90 + cfg.speedFactor * 110 + (cfg.fade - 0.8) * 260) * zoomLengthScale;
+    const advance = dt * (4.8 + cfg.speedFactor * 8.2) * 2.0 * zoomLengthScale;
+
+    const interpolatePoint = (a, b, t) => ({
+      x: lerp(a.x, b.x, t),
+      y: lerp(a.y, b.y, t),
+      speed: lerp(a.speed || 0, b.speed || 0, t),
+      lng: lerp(a.lng, b.lng, t),
+      lat: lerp(a.lat, b.lat, t)
+    });
+    const projectTrailPoints = points => {
+      const out = [];
+      for (const pt of points) {
+        if (!Number.isFinite(pt?.lng) || !Number.isFinite(pt?.lat)) continue;
+        const proj = map.project([pt.lng, pt.lat]);
+        if (!Number.isFinite(proj.x) || !Number.isFinite(proj.y)) continue;
+        out.push({ x: proj.x, y: proj.y, speed: pt.speed || 0, lng: pt.lng, lat: pt.lat });
+      }
+      return out;
+    };
+    const trimTrailByPixels = (projected, maxPixels) => {
+      if (!projected || projected.length < 2) return projected;
+      let acc = 0;
+      let start = projected.length - 1;
+      for (let i = projected.length - 1; i > 0; i--) {
+        const a = projected[i - 1];
+        const b = projected[i];
+        acc += Math.hypot(b.x - a.x, b.y - a.y);
+        start = i - 1;
+        if (acc >= maxPixels) break;
+      }
+      return projected.slice(start);
+    };
+    const drawGradientTrail = (points, lastSpeed, fadeScale = 1) => {
+      if (!points || points.length < 2 || lastSpeed <= 0) return;
+      const projected = trimTrailByPixels(projectTrailPoints(points), targetTrailPixels);
+      if (projected.length < 2) return;
+      const n = projected.length - 1;
+      for (let i = 0; i < n; i++) {
+        const a = projected[i];
+        const b = projected[i + 1];
+        const t0 = i / Math.max(1, n - 1);
+        const t1 = (i + 1) / Math.max(1, n);
+        const t = (t0 + t1) * 0.5;
+        const alpha = lerp(0.05, 0.98, Math.pow(t, 1.35)) * fadeScale;
+        const width = lerp(0.75, 1.35, Math.pow(t, 1.15)) * cfg.lineScale * zoomWidthScale;
+        windCtx.beginPath();
+        windCtx.moveTo(a.x, a.y);
+        windCtx.lineTo(b.x, b.y);
+        windCtx.strokeStyle = colorForSpeed(lastSpeed, cfg.maxSpeed, cfg.palette, alpha);
+        windCtx.lineWidth = width;
+        windCtx.stroke();
+      }
+    };
+
+    for (const p of windParticles) {
+      if (!Array.isArray(p.path) || p.path.length < 2) {
+        resetParticle(p, cfg);
+        continue;
+      }
+      if (p.state !== 'fading' && (p.age >= p.maxAge || Math.random() < resetChance)) {
+        beginFadeOut(p);
+      }
+      if (p.state === 'fading') {
+        p.fadeAge += dt * 60;
+        const fadeT = Math.max(0, 1 - p.fadeAge / p.fadeMaxAge);
+        const headIndex = Math.min(p.path.length - 1, Math.max(0, Math.floor(p.progress)));
+        const head = p.path[headIndex];
+        const lastSpeed = head?.speed || 0;
+        if (head && lastSpeed > 0) {
+          drawGradientTrail(p.path.slice(0, headIndex + 1), lastSpeed, fadeT);
+          const headScreen = map.project([head.lng, head.lat]);
+          windCtx.beginPath();
+          windCtx.arc(headScreen.x, headScreen.y, 0.95 * Math.max(0.75, cfg.lineScale) * zoomWidthScale, 0, Math.PI * 2);
+          windCtx.fillStyle = colorForSpeed(lastSpeed, cfg.maxSpeed, cfg.palette, fadeT);
+          windCtx.fill();
+        }
+        if (fadeT <= 0) resetParticle(p, cfg);
+        continue;
+      }
+
+      p.progress += advance;
+      p.age += dt * 60;
+      if (p.progress >= p.path.length - 1) {
+        beginFadeOut(p);
+        continue;
+      }
+      const headIndex = Math.floor(p.progress);
+      const frac = p.progress - headIndex;
+      const head = interpolatePoint(p.path[headIndex], p.path[Math.min(headIndex + 1, p.path.length - 1)], frac);
+      const lastSpeed = head.speed || p.path[headIndex].speed || 0;
+      const activePoints = p.path.slice(0, headIndex + 1);
+      activePoints.push(head);
+      drawGradientTrail(activePoints, lastSpeed, 1);
+      const headScreen = map.project([head.lng, head.lat]);
+      windCtx.beginPath();
+      windCtx.arc(headScreen.x, headScreen.y, 0.95 * Math.max(0.75, cfg.lineScale) * zoomWidthScale, 0, Math.PI * 2);
+      windCtx.fillStyle = colorForSpeed(lastSpeed, cfg.maxSpeed, cfg.palette, 1);
+      windCtx.fill();
+    }
+    windAnimFrame = requestAnimationFrame(stepWindCanvas);
+  }
+
+  function startWindCanvas() {
+    ensureWindCanvas();
+    windCanvas.style.display = 'block';
+    resizeWindCanvas();
+    windReferenceAreaKm2 = boundsAreaKm2();
+    windReferenceZoom = map.getZoom();
+    restartWindField();
+    cancelAnimationFrame(windAnimFrame);
+    windLastFrameTs = 0;
+    windAnimFrame = requestAnimationFrame(stepWindCanvas);
+  }
+
+  function stopWindCanvas() {
+    hybridWindEnabled = false;
+    cancelAnimationFrame(windAnimFrame);
+    windAnimFrame = 0;
+    windLastFrameTs = 0;
+    windParticles = [];
+    clearWindCanvas();
+    if (windCanvas) windCanvas.style.display = 'none';
+  }
+
+  async function updateHybridWindMode() {
+    if (suppressHybridWindUpdates > 0) return;
+    const shouldUseCanvas = map.getZoom() > HYBRID_PARTICLE_ZOOM;
+    if (shouldUseCanvas === hybridWindEnabled) return;
+    if (shouldUseCanvas) {
+      await ensureNativeWindReady();
+      hybridWindEnabled = true;
+      showOnly(currentKey());
+      startWindCanvas();
+      return;
+    }
+    stopWindCanvas();
+    showOnly(currentKey());
+  }
 
   // 色帶
   function paletteExpr(kind){
@@ -2128,7 +2632,10 @@
     Object.keys(TILESETS).forEach(k=>{
       if (!TILESETS[k]) return;
       const lyrId='wind_'+k;
-      if (map.getLayer(lyrId)) map.setLayoutProperty(lyrId,'visibility', k===key?'visible':'none');
+      if (map.getLayer(lyrId)) {
+        const visible = !hybridWindEnabled && k === key ? 'visible' : 'none';
+        map.setLayoutProperty(lyrId,'visibility', visible);
+      }
     });
   }
 
@@ -2148,6 +2655,7 @@
     await addTerrainOverlay();
     await addAermodTerrainOverlay();
     addScenarioOverlayLayers();
+    addScenario3DBuildingLayer();
     addScenarioStreetLayer();
     await addCountyBoundaries(); // ← 新增：載入縣市邊界（預設隱藏）
     await addCityLabels();    // 生成以 CITY_PRESETS 座標為準的縣市名稱標籤
@@ -2164,6 +2672,7 @@
     addScenarioLayers();
     // 再呼叫一次 showOnly(currentKey())，確保初始只顯示當前情境
     showOnly(currentKey());
+    await updateHybridWindMode();
     refreshScenarioButtonLabels();
     refreshScenarioSourcesForScenario(getScenario(activeScenarioId));
     applyScenarioDisplayOptions(getScenario(activeScenarioId));
@@ -2175,6 +2684,7 @@
   // 2) 色帶選單變更時
   document.getElementById('pPalette').addEventListener('change', ()=>{
     setPaint('raster-particle-color', paletteExpr(document.getElementById('pPalette').value));
+    if (hybridWindEnabled) restartWindField();
     drawWindLegend();              // ← 新增
   });
 
@@ -2182,6 +2692,7 @@
   document.getElementById('pMax').addEventListener('input', ()=>{
     // 先更新地圖色帶（因為停點跟 pMax 有關）
     setPaint('raster-particle-color', paletteExpr(document.getElementById('pPalette').value));
+    if (hybridWindEnabled) restartWindField();
     // 再重畫 legend
     drawWindLegend();
   });
@@ -2245,7 +2756,11 @@
   // === UI 綁定 ===
   const bind = (id, prop, toFixed=2) => {
     const el=$(id), out=$(id+'V');
-    const update=()=>{ out.textContent=(prop==='raster-particle-count'||prop==='raster-particle-max-speed'||prop==='raster-particle-elevation')? +el.value : (+el.value).toFixed(toFixed); setPaint(prop, +el.value); };
+    const update=()=>{
+      out.textContent=(prop==='raster-particle-count'||prop==='raster-particle-max-speed'||prop==='raster-particle-elevation')? +el.value : (+el.value).toFixed(toFixed);
+      setPaint(prop, +el.value);
+      if (hybridWindEnabled && prop !== 'raster-particle-elevation') restartWindField();
+    };
     el.addEventListener('input', update); update();
   };
   bind('pCount','raster-particle-count',0);
@@ -2255,7 +2770,13 @@
   bind('pReset','raster-particle-reset-rate-factor',2);
   bind('pElev','raster-particle-elevation',0);
   document.querySelectorAll('input[name="season"],input[name="tod"]').forEach(el=>{
-    el.addEventListener('change', ()=>showOnly(currentKey()));
+    el.addEventListener('change', ()=>{
+      showOnly(currentKey());
+      if (hybridWindEnabled) restartWindField();
+    });
+  });
+  map.on('zoomend', () => {
+    updateHybridWindMode().catch(err => console.error('Failed to update hybrid wind mode:', err));
   });
 
   // 左上設定按鈕：顯示/隱藏面板
@@ -2318,26 +2839,57 @@
   async function runWithTerrain(steps, durations=[], { lockPitch=true } = {}) {
     throttleParticles(false);
     const startPitch = map.getPitch();
+    const startZoom = map.getZoom();
+    const last = steps[steps.length - 1] || {};
+    const targetZoom = typeof last.zoom === 'number' ? last.zoom : startZoom;
+    const targetPitch = typeof last.pitch === 'number' ? last.pitch : startPitch;
+    const shouldUnlockPitchForCloseZoom =
+      steps.length === 1 &&
+      targetZoom > HYBRID_PARTICLE_ZOOM &&
+      Math.abs(targetZoom - startZoom) >= 2;
+    const usePitchLock = lockPitch && !shouldUnlockPitchForCloseZoom;
 
     // 先用「固定的 pitch」飛完全程，降低地形視差造成的「爬升/下降」錯覺
-    const patched = lockPitch
+    const patched = usePitchLock
       ? steps.map(s => ({ ...s, pitch: startPitch }))
       : steps;
 
     await smoothRun(patched, durations);
 
     // 如果最後一步有指定 pitch，飛完後再短促補上目標 pitch（不影響地形）
-    const last = steps[steps.length - 1] || {};
-    if (lockPitch && typeof last.pitch === 'number' && Math.abs(last.pitch - startPitch) > 0.1) {
+    if (usePitchLock && typeof last.pitch === 'number' && Math.abs(targetPitch - startPitch) > 0.1) {
       await easeToAsync({
         center: last.center ?? map.getCenter(),
-        zoom:   last.zoom   ?? map.getZoom(),
+        zoom:   targetZoom,
         bearing:last.bearing ?? map.getBearing(),
-        pitch:  last.pitch
+        pitch:  targetPitch
       }, 900);
     }
 
     throttleParticles(true);
+  }
+
+  async function flyScenarioCamera(camera) {
+    if (!camera) return;
+    throttleParticles(false);
+    suppressHybridWindUpdates += 1;
+    const terrainSpec = getCurrentTerrainSpec();
+    try {
+      if (map.isMoving()) map.stop();
+      if (terrainSpec) map.setTerrain(null);
+      await flyToAsync({
+        center: camera.center,
+        zoom: camera.zoom,
+        pitch: camera.pitch,
+        bearing: camera.bearing,
+        duration: Math.max(FLY_DUR, 5200)
+      });
+    } finally {
+      if (terrainSpec) map.setTerrain(terrainSpec);
+      suppressHybridWindUpdates = Math.max(0, suppressHybridWindUpdates - 1);
+      throttleParticles(true);
+      await updateHybridWindMode();
+    }
   }
 
   function msFor(from, to, min=1800, max=4200){

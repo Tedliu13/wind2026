@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-17T08:10:38.450Z",
+  "updatedAt": "2026-08-19T04:04:43.515Z",
   "scenarios": {
     "scenario1": {
       "id": "scenario1",
@@ -11,6 +11,7 @@
       "showCounty": false,
       "showCityLabel": false,
       "showStreetMap": true,
+      "show3DBuildings": false,
       "showTaipeiTowns": true,
       "showNewTaipeiTowns": true,
       "overlays": [
@@ -92,6 +93,7 @@
       "showCounty": false,
       "showCityLabel": false,
       "showStreetMap": true,
+      "show3DBuildings": false,
       "showTaipeiTowns": true,
       "showNewTaipeiTowns": true,
       "overlays": [
@@ -173,8 +175,9 @@
       "showCounty": true,
       "showCityLabel": true,
       "showStreetMap": true,
-      "showTaipeiTowns": false,
-      "showNewTaipeiTowns": false,
+      "show3DBuildings": true,
+      "showTaipeiTowns": true,
+      "showNewTaipeiTowns": true,
       "overlays": [
         "2605260200.tif"
       ],
@@ -182,10 +185,10 @@
       "overlayOrder": 1,
       "camera": {
         "center": [
-          121.493136,
-          25.082234
+          121.518521,
+          25.072493
         ],
-        "zoom": 11.71,
+        "zoom": 15.25,
         "pitch": 39.83,
         "bearing": 0
       },
