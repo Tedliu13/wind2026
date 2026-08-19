@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="https://api.mapbox.com/mapbox-gl-js/v3.14.0/mapbox-gl.css" rel="stylesheet" />
   <script src="https://api.mapbox.com/mapbox-gl-js/v3.14.0/mapbox-gl.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.min.js"></script>
   <style>
     html,body,#map{height:100%;margin:0}
     /* 設定面板（預設隱藏） */
@@ -166,6 +167,28 @@
       z-index:4;
       pointer-events:none;
       display:none;
+    }
+    .windtemp-popup .mapboxgl-popup-content{
+      background:transparent;
+      box-shadow:none;
+      padding:0;
+      border-radius:0;
+    }
+    .windtemp-popup .mapboxgl-popup-tip{
+      display:none;
+    }
+    .windtemp-popup .mapboxgl-popup-close-button{
+      display:none;
+    }
+    .windtemp-popup-text{
+      color:#ffffff;
+      font:700 18px/1.55 "Noto Sans TC","Open Sans","Arial Unicode MS",system-ui,sans-serif;
+      text-shadow:
+        0 0 2px rgba(0,0,0,.95),
+        0 1px 4px rgba(0,0,0,.9),
+        0 0 10px rgba(0,0,0,.55);
+      white-space:nowrap;
+      pointer-events:none;
     }
     @media (max-width: 900px){
       .modal-grid{grid-template-columns:1fr}
@@ -385,6 +408,7 @@
           <label><input id="scenarioShow3DBuildings" type="checkbox"> 顯示3D建物</label>
           <label><input id="scenarioShowTaipeiTowns" type="checkbox"> 顯示台北市鄉鎮區</label>
           <label><input id="scenarioShowNewTaipeiTowns" type="checkbox"> 顯示新北市鄉鎮區</label>
+          <label><input id="scenarioShowWindTempProbe" type="checkbox"> 顯示風速溫度</label>
         </div>
         <div class="field-grid" style="margin-top:10px">
           <label class="field">疊圖透明度
@@ -508,12 +532,13 @@
   ];
   const SCENARIO_OVERLAY_BOUNDS = [121.0076414, 24.7597414, 121.7419290, 25.2409586];
   const SCENARIO_OVERLAY_OPTIONS = [
-    { key: 'overlay2605261400', file: '2605261400.tif', inputId: 'scenarioOverlay2605261400', layerId: 'scenario-overlay-2605261400', sourceId: 'scenario-overlay-src-2605261400', url: 'upload/2605261400_overlay.png' },
-    { key: 'overlay2605260200', file: '2605260200.tif', inputId: 'scenarioOverlay2605260200', layerId: 'scenario-overlay-2605260200', sourceId: 'scenario-overlay-src-2605260200', url: 'upload/2605260200_overlay.png' }
+    { key: 'overlay2605261400', file: '2605261400.tif', inputId: 'scenarioOverlay2605261400', layerId: 'scenario-overlay-2605261400', sourceId: 'scenario-overlay-src-2605261400', url: 'upload/2605261400_overlay.png', tifUrl: 'upload/2605261400.tif' },
+    { key: 'overlay2605260200', file: '2605260200.tif', inputId: 'scenarioOverlay2605260200', layerId: 'scenario-overlay-2605260200', sourceId: 'scenario-overlay-src-2605260200', url: 'upload/2605260200_overlay.png', tifUrl: 'upload/2605260200.tif' }
   ];
   let scenarioConfig = createDefaultScenarioConfig();
   let scenarioDraft = createDefaultScenarioConfig();
   let activeScenarioId = null;
+  let activeScenarioData = null;
   let editingScenarioId = 'scenario1';
   let scenarioModalBound = false;
   let scenarioMapInteractionsBound = false;
@@ -527,9 +552,11 @@
     JJA_night: 'wind_JJA_night_native.json'
   };
   const HYBRID_PARTICLE_ZOOM = 15;
+  const TERRAIN_EXAGGERATION_FAR = 4;
+  const TERRAIN_EXAGGERATION_NEAR = 1;
   const HYBRID_CANVAS_DEFAULTS = {
     countScale: 0.3,
-    speedScale: 0.06,
+    speedScale: 0.4,
     lineScale: 0.8,
     smoothing: 0.88,
     ignoreTerrainFlow: false
@@ -547,6 +574,10 @@
   let hybridWindEnabled = false;
   let windNativeReadyPromise = null;
   let suppressHybridWindUpdates = 0;
+  let scenarioWindTempPopup = null;
+  let scenarioWindTempProbeBound = false;
+  const scenarioTownFeatureCache = {};
+  const scenarioTemperatureRasterCache = {};
 
   function createId(prefix){
     return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -586,6 +617,7 @@
       show3DBuildings: false,
       showTaipeiTowns: false,
       showNewTaipeiTowns: false,
+      showWindTempProbe: false,
       overlays: createDefaultScenarioOverlays(id),
       overlayOpacity: 0.72,
       overlayOrder: 1,
@@ -670,6 +702,7 @@
       show3DBuildings: !!raw?.show3DBuildings,
       showTaipeiTowns: raw?.showTaipeiTowns === undefined ? (raw?.showTowns === undefined ? !!raw?.showStreetMap : !!raw?.showTowns) : !!raw?.showTaipeiTowns,
       showNewTaipeiTowns: raw?.showNewTaipeiTowns === undefined ? (raw?.showTowns === undefined ? !!raw?.showStreetMap : !!raw?.showTowns) : !!raw?.showNewTaipeiTowns,
+      showWindTempProbe: !!raw?.showWindTempProbe,
       overlays: normalizeScenarioOverlays(raw?.overlays, id),
       overlayOpacity: normalizeScenarioOverlayOpacity(raw?.overlayOpacity),
       overlayOrder: normalizeScenarioOverlayOrder(raw?.overlayOrder),
@@ -743,6 +776,160 @@
   }
   function getEditingScenario(){
     return scenarioDraft.scenarios[editingScenarioId];
+  }
+  function getActiveScenarioRuntime(){
+    return activeScenarioData || getScenario(activeScenarioId);
+  }
+  function getScenarioProbeEnabled(scenario = getActiveScenarioRuntime()){
+    return !!scenario?.showWindTempProbe;
+  }
+  function getScenarioTemperatureOverlayOption(scenario = getActiveScenarioRuntime()){
+    const selected = new Set(scenario?.overlays || []);
+    return SCENARIO_OVERLAY_OPTIONS.find(option => selected.has(option.file)) || null;
+  }
+  async function ensureScenarioTownFeatures(){
+    if (scenarioTownFeatureCache.all) return scenarioTownFeatureCache.all;
+    const [taipei, newTaipei] = await Promise.all([
+      fetch('upload/taiwan-towns-63000.geojson', { cache: 'force-cache' }).then(r => r.json()),
+      fetch('upload/taiwan-towns-65000.geojson', { cache: 'force-cache' }).then(r => r.json())
+    ]);
+    scenarioTownFeatureCache.all = [
+      ...((taipei?.features || []).map(feature => ({ city: '台北市', feature }))),
+      ...((newTaipei?.features || []).map(feature => ({ city: '新北市', feature })))
+    ];
+    return scenarioTownFeatureCache.all;
+  }
+  function pointInRing(lng, lat, ring){
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const xi = ring[i][0], yi = ring[i][1];
+      const xj = ring[j][0], yj = ring[j][1];
+      const intersects = ((yi > lat) !== (yj > lat)) &&
+        (lng < ((xj - xi) * (lat - yi)) / ((yj - yi) || 1e-12) + xi);
+      if (intersects) inside = !inside;
+    }
+    return inside;
+  }
+  function pointInPolygonGeometry(lng, lat, geometry){
+    if (!geometry) return false;
+    const polygons = geometry.type === 'Polygon'
+      ? [geometry.coordinates]
+      : geometry.type === 'MultiPolygon'
+        ? geometry.coordinates
+        : [];
+    for (const polygon of polygons) {
+      if (!polygon?.length) continue;
+      if (!pointInRing(lng, lat, polygon[0])) continue;
+      let inHole = false;
+      for (let i = 1; i < polygon.length; i++) {
+        if (pointInRing(lng, lat, polygon[i])) {
+          inHole = true;
+          break;
+        }
+      }
+      if (!inHole) return true;
+    }
+    return false;
+  }
+  async function getTownAtLngLat(lng, lat){
+    const features = await ensureScenarioTownFeatures();
+    for (const item of features) {
+      if (pointInPolygonGeometry(lng, lat, item.feature?.geometry)) {
+        return {
+          city: item.city,
+          town: item.feature?.properties?.name || item.feature?.properties?.TOWNNAME || ''
+        };
+      }
+    }
+    return null;
+  }
+  async function ensureScenarioTemperatureRaster(option){
+    if (!option?.tifUrl) return null;
+    if (scenarioTemperatureRasterCache[option.file]) return scenarioTemperatureRasterCache[option.file];
+    if (!window.GeoTIFF) throw new Error('GeoTIFF library not loaded');
+    const tiff = await window.GeoTIFF.fromUrl(option.tifUrl);
+    const image = await tiff.getImage();
+    const rasters = await image.readRasters({ interleave: true });
+    const bbox = image.getBoundingBox();
+    const width = image.getWidth();
+    const height = image.getHeight();
+    const noDataRaw = image.getGDALNoData?.();
+    const noData = noDataRaw == null ? null : Number(noDataRaw);
+    const raster = {
+      bbox,
+      width,
+      height,
+      data: rasters,
+      noData
+    };
+    scenarioTemperatureRasterCache[option.file] = raster;
+    return raster;
+  }
+  async function sampleScenarioTemperatureAtLngLat(lng, lat, scenario = getScenario(activeScenarioId)){
+    const option = getScenarioTemperatureOverlayOption(scenario);
+    if (!option) return null;
+    const raster = await ensureScenarioTemperatureRaster(option);
+    if (!raster) return null;
+    const [minX, minY, maxX, maxY] = raster.bbox;
+    if (lng < minX || lng > maxX || lat < minY || lat > maxY) return null;
+    const x = Math.max(0, Math.min(raster.width - 1, Math.floor(((lng - minX) / (maxX - minX)) * raster.width)));
+    const y = Math.max(0, Math.min(raster.height - 1, Math.floor(((maxY - lat) / (maxY - minY)) * raster.height)));
+    const idx = y * raster.width + x;
+    const value = Number(raster.data[idx]);
+    if (!Number.isFinite(value)) return null;
+    if (raster.noData !== null && Math.abs(value - raster.noData) < 1e-9) return null;
+    return value;
+  }
+  function clearScenarioWindTempPopup(){
+    scenarioWindTempPopup?.remove();
+  }
+  async function updateScenarioWindTempProbe(e){
+    if (!activeScenarioId || !getScenarioProbeEnabled() || isScenarioEditActive()) {
+      clearScenarioWindTempPopup();
+      return;
+    }
+    const scenario = getScenario(activeScenarioId);
+    const [townInfo, tempValue] = await Promise.all([
+      getTownAtLngLat(e.lngLat.lng, e.lngLat.lat).catch(() => null),
+      sampleScenarioTemperatureAtLngLat(e.lngLat.lng, e.lngLat.lat, scenario).catch(() => null)
+    ]);
+    const wind = sampleWindAt(currentKey(), e.lngLat.lng, e.lngLat.lat);
+    if (!townInfo && !wind && tempValue == null) {
+      clearScenarioWindTempPopup();
+      return;
+    }
+    if (!scenarioWindTempPopup) {
+      scenarioWindTempPopup = new mapboxgl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        offset: 10,
+        className: 'windtemp-popup'
+      });
+    }
+    const locationText = townInfo ? `${townInfo.city}${townInfo.town}` : '台北/新北市範圍外';
+    const windText = wind ? `${wind.speed.toFixed(1)} m/s` : '-- m/s';
+    const tempText = tempValue == null ? '-- °C' : `${tempValue.toFixed(1)} °C`;
+    scenarioWindTempPopup
+      .setLngLat(e.lngLat)
+      .setHTML(
+        `<div class="windtemp-popup-text">
+          <div>${locationText}</div>
+          <div>風速 ${windText}</div>
+          <div>溫度 ${tempText}</div>
+        </div>`
+      )
+      .addTo(map);
+  }
+  function bindScenarioWindTempProbe(){
+    if (scenarioWindTempProbeBound) return;
+    scenarioWindTempProbeBound = true;
+    map.on('mousemove', (e) => {
+      updateScenarioWindTempProbe(e).catch(err => {
+        console.error('Failed to update scenario wind/temp probe:', err);
+        clearScenarioWindTempPopup();
+      });
+    });
+    map.on('mouseout', clearScenarioWindTempPopup);
   }
   function captureCurrentCamera(){
     const center = map.getCenter();
@@ -921,6 +1108,7 @@
     $('scenarioShow3DBuildings').checked = !!scenario?.show3DBuildings;
     $('scenarioShowTaipeiTowns').checked = !!scenario?.showTaipeiTowns;
     $('scenarioShowNewTaipeiTowns').checked = !!scenario?.showNewTaipeiTowns;
+    $('scenarioShowWindTempProbe').checked = !!scenario?.showWindTempProbe;
     $('scenarioOverlayOpacity').value = String(scenario?.overlayOpacity ?? 0.72);
     $('scenarioOverlayOpacityValue').value = Number(scenario?.overlayOpacity ?? 0.72).toFixed(2);
     $('scenarioOverlayOrder').value = String(scenario?.overlayOrder ?? 1);
@@ -1035,6 +1223,7 @@
     scenario.show3DBuildings = $('scenarioShow3DBuildings').checked;
     scenario.showTaipeiTowns = $('scenarioShowTaipeiTowns').checked;
     scenario.showNewTaipeiTowns = $('scenarioShowNewTaipeiTowns').checked;
+    scenario.showWindTempProbe = $('scenarioShowWindTempProbe').checked;
     scenario.overlays = SCENARIO_OVERLAY_OPTIONS
       .filter(option => $(option.inputId).checked)
       .map(option => option.file);
@@ -1247,7 +1436,7 @@
         type: 'fill-extrusion',
         minzoom: 13,
         layout: { visibility: 'none' },
-        filter: ['==', ['get', 'extrude'], 'true'],
+        filter: ['==', ['geometry-type'], 'Polygon'],
         paint: {
           'fill-extrusion-color': [
             'interpolate', ['linear'], ['get', 'height'],
@@ -1256,7 +1445,12 @@
             150, '#e5e7eb'
           ],
           'fill-extrusion-opacity': 0.72,
-          'fill-extrusion-height': ['coalesce', ['to-number', ['get', 'height']], 0],
+          'fill-extrusion-height': [
+            'case',
+            ['>', ['coalesce', ['to-number', ['get', 'height']], 0], 0],
+            ['coalesce', ['to-number', ['get', 'height']], 0],
+            4
+          ],
           'fill-extrusion-base': ['coalesce', ['to-number', ['get', 'min_height']], 0]
         }
       }, beforeId);
@@ -1397,11 +1591,13 @@
     applyScenarioOverlayStyle(scenario);
     applyScenarioOverlaySelection(scenario?.overlays || []);
     updatePinLabelVisibility();
+    if (!getScenarioProbeEnabled(scenario)) clearScenarioWindTempPopup();
   }
   function applyScenario(id, { fly = true, useDraft = false } = {}){
     const source = useDraft ? scenarioDraft : scenarioConfig;
     if (!id) {
       activeScenarioId = null;
+      activeScenarioData = null;
       refreshScenarioButtonLabels();
       refreshScenarioSourcesForScenario(null);
       refreshScenarioArrowHandle();
@@ -1409,11 +1605,13 @@
       applyScenarioOverlaySelection([]);
       setActiveScenarioStoryNote(null);
       updateStoryBar(null);
+      clearScenarioWindTempPopup();
       return;
     }
     const scenario = source.scenarios[id];
     if (!scenario) return;
     activeScenarioId = id;
+    activeScenarioData = scenario;
     refreshScenarioButtonLabels();
     const seasonEl = document.querySelector(`input[name="season"][value="${scenario.season}"]`);
     const todEl = document.querySelector(`input[name="tod"][value="${scenario.tod}"]`);
@@ -2039,7 +2237,7 @@
       btn.addEventListener('click', () => switchEditingScenario(btn.dataset.scenarioTab));
     });
 
-    ['scenarioName','scenarioSeason','scenarioTod','scenarioPalette','scenarioShowCounty','scenarioShowCityLabel','scenarioShowStreetMap','scenarioShow3DBuildings','scenarioShowTaipeiTowns','scenarioShowNewTaipeiTowns','scenarioOverlay2605261400','scenarioOverlay2605260200','scenarioOverlayOpacity','scenarioOverlayOrder','scenarioLng','scenarioLat','scenarioZoom','scenarioPitch','scenarioBearing'].forEach(id => {
+    ['scenarioName','scenarioSeason','scenarioTod','scenarioPalette','scenarioShowCounty','scenarioShowCityLabel','scenarioShowStreetMap','scenarioShow3DBuildings','scenarioShowTaipeiTowns','scenarioShowNewTaipeiTowns','scenarioShowWindTempProbe','scenarioOverlay2605261400','scenarioOverlay2605260200','scenarioOverlayOpacity','scenarioOverlayOrder','scenarioLng','scenarioLat','scenarioZoom','scenarioPitch','scenarioBearing'].forEach(id => {
       $(id).addEventListener('input', syncEditingScenarioFromInputs);
       $(id).addEventListener('change', syncEditingScenarioFromInputs);
     });
@@ -2153,9 +2351,24 @@
     if (st.terrain && !map.getSource(st.terrain.source)) map.setTerrain(null);
     const dem = Object.entries(st.sources).find(([,s])=>s.type==='raster-dem');
     if (dem) {
-      map.setTerrain({ source: dem[0], exaggeration: 4 }); 
+      map.setTerrain({ source: dem[0], exaggeration: getDesiredTerrainExaggeration() }); 
       if (!map.getLayer('sky')) map.addLayer({ id:'sky', type:'sky', paint:{ 'sky-type':'atmosphere' }});
     }
+  }
+  function getDesiredTerrainExaggeration(zoom = map.getZoom()){
+    if (!Number.isFinite(zoom)) return TERRAIN_EXAGGERATION_FAR;
+    if (zoom >= 15) return TERRAIN_EXAGGERATION_NEAR;
+    if (zoom <= 13) return TERRAIN_EXAGGERATION_FAR;
+    const t = (zoom - 13) / 2;
+    return TERRAIN_EXAGGERATION_FAR + (TERRAIN_EXAGGERATION_NEAR - TERRAIN_EXAGGERATION_FAR) * t;
+  }
+  function updateTerrainExaggeration(){
+    const terrain = map.getTerrain?.();
+    if (!terrain?.source) return;
+    map.setTerrain({
+      source: terrain.source,
+      exaggeration: getDesiredTerrainExaggeration()
+    });
   }
   function getCurrentTerrainSpec(){
     const terrain = map.getTerrain?.();
@@ -2244,7 +2457,8 @@
   function currentCanvasWindConfig() {
     return {
       count: Math.max(1, Math.round(+$('pCount').value * HYBRID_CANVAS_DEFAULTS.countScale)),
-      speedFactor: parseFloat($('pSpeed').value) * HYBRID_CANVAS_DEFAULTS.speedScale,
+      speedFactor: parseFloat($('pSpeed').value),
+      speedScale: HYBRID_CANVAS_DEFAULTS.speedScale,
       fade: parseFloat($('pFade').value),
       maxSpeed: +$('pMax').value,
       reset: parseFloat($('pReset').value),
@@ -2313,7 +2527,7 @@
     const path = [];
     let lng = seedLng;
     let lat = seedLat;
-    const stepSeconds = 32 + cfg.speedFactor * 62;
+    const stepSeconds = (32 + cfg.speedFactor * 62) * cfg.speedScale;
     const segments = Math.max(24, Math.round(22 + cfg.speedFactor * 30 + (cfg.fade - 0.8) * 44));
     const directionSmoothing = cfg.ignoreTerrainFlow ? Math.max(cfg.smoothing, 0.96) : cfg.smoothing;
     let prevU = null;
@@ -2391,7 +2605,7 @@
     const currentAreaKm2 = boundsAreaKm2();
     const areaRatio = currentAreaKm2 / windReferenceAreaKm2;
     const scaledTarget = Math.round(cfg.count * Math.pow(areaRatio, 0.62));
-    const minTarget = Math.max(700, Math.round(cfg.count * 0.38));
+    const minTarget = Math.max(1, Math.round(cfg.count * 0.38));
     const maxTarget = Math.min(9000, Math.round(cfg.count * 2.0));
     const target = Math.max(minTarget, Math.min(maxTarget, scaledTarget));
     while (windParticles.length < target) windParticles.push(resetParticle({}, cfg));
@@ -2430,7 +2644,7 @@
     const zoomLengthScale = Math.pow(2, -zoomDelta * 0.65);
     const zoomWidthScale = Math.pow(2, zoomDelta * 0.16);
     const targetTrailPixels = (90 + cfg.speedFactor * 110 + (cfg.fade - 0.8) * 260) * zoomLengthScale;
-    const advance = dt * (4.8 + cfg.speedFactor * 8.2) * 2.0 * zoomLengthScale;
+    const advance = dt * (4.8 + cfg.speedFactor * 8.2) * 2.0 * zoomLengthScale * cfg.speedScale;
 
     const interpolatePoint = (a, b, t) => ({
       x: lerp(a.x, b.x, t),
@@ -2666,6 +2880,7 @@
     bindAermodTerrainUI();
     bindPinUI();
     bindScenarioModal();
+    bindScenarioWindTempProbe();
     bindCountyToggle();          // ← 新增：綁定面板開關
     drawWindLegend();
     await ensureArrowImage();      // 每次 style 載入都安全重建影像
@@ -2776,6 +2991,7 @@
     });
   });
   map.on('zoomend', () => {
+    updateTerrainExaggeration();
     updateHybridWindMode().catch(err => console.error('Failed to update hybrid wind mode:', err));
   });
 
@@ -2885,7 +3101,12 @@
         duration: Math.max(FLY_DUR, 5200)
       });
     } finally {
-      if (terrainSpec) map.setTerrain(terrainSpec);
+      if (terrainSpec) {
+        map.setTerrain({
+          source: terrainSpec.source,
+          exaggeration: getDesiredTerrainExaggeration()
+        });
+      }
       suppressHybridWindUpdates = Math.max(0, suppressHybridWindUpdates - 1);
       throttleParticles(true);
       await updateHybridWindMode();
